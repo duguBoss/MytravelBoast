@@ -23,6 +23,7 @@ const fmtSize = formatFileSize
 // DOM refs
 const mapContainer = ref(null)
 const previewVideo = ref(null)
+const recordCanvas = ref(null)
 
 // State
 const isRecording = ref(false)
@@ -36,7 +37,7 @@ const showPreviewPlayer = ref(false)
 const recordStats = ref(null)
 
 // Local settings for preview page
-const videoDuration = ref(19)
+const videoDuration = ref(5)
 const modelSize = ref(0.65)
 const selectedRatio = ref(props.settings?.ratio || 'vertical')
 
@@ -47,6 +48,10 @@ let routeLine = null
 let animRaf = null
 let mediaRecorder = null
 let recordChunks = []
+
+// Offscreen canvas for recording
+let offscreenCtx = null
+let offscreenCanvas = null
 
 const durationDisplay = computed(() => Math.round(videoDuration.value) + ' 秒')
 const sizeDisplay = computed(() => modelSize.value.toFixed(2))
@@ -148,6 +153,115 @@ function updateVehicle(t) {
     })
     vehicleMarker.setIcon(vehicleIcon)
   }
+
+  return { lat, lng, segIdx }
+}
+
+// Capture map to offscreen canvas
+function captureMapToCanvas() {
+  if (!mapInstance || !offscreenCtx) return
+
+  const { w, h } = getMapSize()
+  const mapPane = mapContainer.value.querySelector('.leaflet-map-pane')
+  if (!mapPane) return
+
+  // Use html2canvas-like approach: draw the map container
+  // For simplicity, we capture the tile canvas and overlay markers manually
+  const tileCanvas = mapContainer.value.querySelector('canvas')
+  if (tileCanvas) {
+    offscreenCtx.drawImage(tileCanvas, 0, 0, w, h)
+  }
+
+  // Draw route line (simplified - draw a line between points)
+  drawRouteOnCanvas()
+
+  // Draw markers
+  drawMarkersOnCanvas()
+
+  // Draw vehicle
+  drawVehicleOnCanvas()
+}
+
+function drawRouteOnCanvas() {
+  if (!mapInstance || !offscreenCtx) return
+  const latlngs = props.points.map(p => [p.lat, p.lng])
+
+  offscreenCtx.save()
+  offscreenCtx.strokeStyle = '#ff6b4a'
+  offscreenCtx.lineWidth = 4
+  offscreenCtx.lineCap = 'round'
+  offscreenCtx.lineJoin = 'round'
+  offscreenCtx.setLineDash([6, 4])
+  offscreenCtx.beginPath()
+
+  let first = true
+  for (const [lat, lng] of latlngs) {
+    const pt = mapInstance.latLngToContainerPoint([lat, lng])
+    if (first) {
+      offscreenCtx.moveTo(pt.x, pt.y)
+      first = false
+    } else {
+      offscreenCtx.lineTo(pt.x, pt.y)
+    }
+  }
+  offscreenCtx.stroke()
+  offscreenCtx.restore()
+}
+
+function drawMarkersOnCanvas() {
+  if (!mapInstance || !offscreenCtx) return
+
+  // Start marker (A)
+  const startPt = mapInstance.latLngToContainerPoint([props.points[0].lat, props.points[0].lng])
+  drawPinOnCanvas(startPt.x, startPt.y, 'A', '#34c759')
+
+  // End marker (B)
+  const endPt = mapInstance.latLngToContainerPoint([props.points[props.points.length - 1].lat, props.points[props.points.length - 1].lng])
+  drawPinOnCanvas(endPt.x, endPt.y, 'B', '#ff6b4a')
+}
+
+function drawPinOnCanvas(x, y, label, color) {
+  offscreenCtx.save()
+  // Circle background
+  offscreenCtx.beginPath()
+  offscreenCtx.arc(x, y, 14, 0, Math.PI * 2)
+  offscreenCtx.fillStyle = color
+  offscreenCtx.fill()
+  offscreenCtx.lineWidth = 3
+  offscreenCtx.strokeStyle = '#fff'
+  offscreenCtx.stroke()
+  // Shadow
+  offscreenCtx.shadowColor = 'rgba(0,0,0,0.25)'
+  offscreenCtx.shadowBlur = 8
+  offscreenCtx.shadowOffsetY = 2
+  // Text
+  offscreenCtx.fillStyle = '#fff'
+  offscreenCtx.font = 'bold 12px sans-serif'
+  offscreenCtx.textAlign = 'center'
+  offscreenCtx.textBaseline = 'middle'
+  offscreenCtx.fillText(label, x, y)
+  offscreenCtx.restore()
+}
+
+function drawVehicleOnCanvas() {
+  if (!mapInstance || !offscreenCtx || !vehicleMarker) return
+
+  const ll = vehicleMarker.getLatLng()
+  const pt = mapInstance.latLngToContainerPoint([ll.lat, ll.lng])
+  const size = 32 * modelSize.value
+
+  offscreenCtx.save()
+  offscreenCtx.font = `${size}px serif`
+  offscreenCtx.textAlign = 'center'
+  offscreenCtx.textBaseline = 'middle'
+  offscreenCtx.shadowColor = 'rgba(0,0,0,0.3)'
+  offscreenCtx.shadowBlur = 6
+  offscreenCtx.shadowOffsetY = 3
+
+  // Get current vehicle icon
+  const v = props.segments[0]?.vehicle || { icon: '✈️' }
+  offscreenCtx.fillText(v.icon || '✈️', pt.x, pt.y)
+  offscreenCtx.restore()
 }
 
 async function record() {
@@ -171,50 +285,101 @@ async function record() {
   recordStats.value = null
   savedResult.value = null
 
-  // Setup MediaRecorder from Leaflet canvas
-  const mapEl = mapContainer.value
-  // Leaflet uses canvas internally, find it
-  const canvas = mapEl.querySelector('canvas')
-  const stream = canvas && canvas.captureStream ? canvas.captureStream(30) : null
-  
-  if (!stream) {
+  // Setup offscreen canvas for recording
+  const { w, h } = getMapSize()
+  offscreenCanvas = document.createElement('canvas')
+  offscreenCanvas.width = w
+  offscreenCanvas.height = h
+  offscreenCtx = offscreenCanvas.getContext('2d')
+
+  // Check if canvas.captureStream is supported
+  if (!offscreenCanvas.captureStream) {
     emit('toast', '浏览器不支持视频录制')
     isRecording.value = false
     return
   }
 
-  const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') 
-    ? 'video/webm; codecs=vp9' 
-    : 'video/webm'
-  
-  mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4000000 })
+  const stream = offscreenCanvas.captureStream(30)
+
+  // Find supported mimeType
+  const mimeTypes = [
+    'video/webm; codecs=vp9',
+    'video/webm; codecs=vp8',
+    'video/webm',
+    'video/mp4'
+  ]
+  let mimeType = ''
+  for (const mt of mimeTypes) {
+    if (MediaRecorder.isTypeSupported(mt)) {
+      mimeType = mt
+      break
+    }
+  }
+
+  if (!mimeType) {
+    emit('toast', '浏览器不支持视频录制格式')
+    isRecording.value = false
+    return
+  }
+
+  mediaRecorder = new MediaRecorder(stream, {
+    mimeType,
+    videoBitsPerSecond: 2500000
+  })
   recordChunks = []
-  
+
   mediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0) recordChunks.push(e.data)
   }
 
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordChunks, { type: mimeType })
+    recordedBlob.value = blob
+    isRecording.value = false
+    canSave.value = true
+    recordStats.value = {
+      size: blob.size,
+      duration: videoDuration.value + 's'
+    }
+    previewRecorded()
+  }
+
   mediaRecorder.start(100)
 
-  // Animate vehicle
+  // Animate and capture frames
   const totalDist = props.segments.reduce((s, seg) => s + seg.distance, 0)
-  const duration = Math.max((totalDist * 28) / (props.settings.speed || 2), videoDuration.value * 1000)
+  const durationMs = videoDuration.value * 1000
   const startTime = performance.now()
+  let lastCaptureTime = 0
 
   function step(now) {
     const elapsed = now - startTime
-    const t = Math.min(elapsed / duration, 1)
+    const t = Math.min(elapsed / durationMs, 1)
     progress.value = t * 100
+
+    // Update vehicle position on map
     updateVehicle(t)
+
+    // Capture to offscreen canvas (throttle to ~30fps)
+    if (now - lastCaptureTime >= 33) {
+      captureMapToCanvas()
+      lastCaptureTime = now
+    }
 
     if (t < 1) {
       animRaf = requestAnimationFrame(step)
     } else {
+      // Final capture
+      captureMapToCanvas()
       finishRecording()
     }
   }
 
-  animRaf = requestAnimationFrame(step)
+  // Initial capture
+  setTimeout(() => {
+    captureMapToCanvas()
+    animRaf = requestAnimationFrame(step)
+  }, 500) // Wait for map tiles to load
 }
 
 function finishRecording() {
@@ -222,20 +387,9 @@ function finishRecording() {
     cancelAnimationFrame(animRaf)
     animRaf = null
   }
-  
+
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop()
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(recordChunks, { type: 'video/webm' })
-      recordedBlob.value = blob
-      isRecording.value = false
-      canSave.value = true
-      recordStats.value = {
-        size: blob.size,
-        duration: videoDuration.value + 's'
-      }
-      previewRecorded()
-    }
   }
 }
 
@@ -293,6 +447,8 @@ function close() {
   canSave.value = false
   showPreviewPlayer.value = false
   recordStats.value = null
+  offscreenCanvas = null
+  offscreenCtx = null
   emit('close')
 }
 
