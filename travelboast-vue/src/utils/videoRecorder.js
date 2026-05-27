@@ -1,14 +1,18 @@
 /**
  * Video Recorder Utility - High-performance video recording for TravelBoast
- * 
+ *
  * Features:
  * - Canvas-based frame capture at configurable FPS (default 30)
  * - WebM VP9/VP8 encoding with quality presets
+ * - FFmpeg.wasm WebM to MP4 conversion
  * - Progress callbacks for UI feedback
  * - Cancellation support
  * - Multiple save strategies (File System API, auto-download, blob URL)
  * - Frame buffering for smooth recording
  */
+
+import { FFmpeg } from '@ffmpeg/ffmpeg'
+import { fetchFile } from '@ffmpeg/util'
 
 // Quality presets for different use cases
 export const QualityPresets = {
@@ -35,7 +39,7 @@ function getBestMimeType() {
 export function getPresetForRatio(ratio, quality = 'standard') {
   const preset = QualityPresets[quality] || QualityPresets.standard
   const r = ratio || 'vertical'
-  
+
   if (r === 'horizontal') {
     return { ...preset, width: preset.height, height: preset.width }
   }
@@ -44,6 +48,70 @@ export function getPresetForRatio(ratio, quality = 'standard') {
     return { ...preset, width: size, height: size }
   }
   return preset
+}
+
+// FFmpeg singleton
+let ffmpegInstance = null
+let ffmpegLoading = false
+let ffmpegLoadPromise = null
+
+async function getFFmpeg() {
+  if (ffmpegInstance) return ffmpegInstance
+  if (ffmpegLoadPromise) return ffmpegLoadPromise
+
+  ffmpegLoading = true
+  ffmpegLoadPromise = (async () => {
+    const ffmpeg = new FFmpeg()
+    await ffmpeg.load()
+    ffmpegInstance = ffmpeg
+    ffmpegLoading = false
+    return ffmpeg
+  })()
+
+  return ffmpegLoadPromise
+}
+
+/**
+ * Convert WebM blob to MP4 using FFmpeg.wasm
+ * @param {Blob} webmBlob
+ * @param {Function} onProgress - (progress: 0-100) => void
+ * @returns {Promise<Blob>}
+ */
+export async function convertWebMToMP4(webmBlob, onProgress = () => {}) {
+  const ffmpeg = await getFFmpeg()
+
+  // Write input file
+  const inputName = 'input.webm'
+  const outputName = 'output.mp4'
+  await ffmpeg.writeFile(inputName, await fetchFile(webmBlob))
+
+  // Progress callback
+  ffmpeg.on('progress', ({ progress }) => {
+    onProgress(Math.min(Math.round(progress * 100), 100))
+  })
+
+  // Convert: webm -> mp4 (H.264)
+  await ffmpeg.exec([
+    '-i', inputName,
+    '-c:v', 'libx264',
+    '-preset', 'fast',
+    '-crf', '23',
+    '-movflags', '+faststart',
+    '-pix_fmt', 'yuv420p',
+    '-an',
+    '-y',
+    outputName
+  ])
+
+  // Read output
+  const data = await ffmpeg.readFile(outputName)
+  const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' })
+
+  // Cleanup
+  await ffmpeg.deleteFile(inputName)
+  await ffmpeg.deleteFile(outputName)
+
+  return mp4Blob
 }
 
 /**
@@ -59,9 +127,9 @@ export function createRecorder(canvas, options = {}) {
   const fps = options.fps || 30
   const bitrate = options.bitrate || 4_000_000
   const mimeType = options.mimeType || getBestMimeType()
-  
+
   const stream = canvas.captureStream(fps)
-  
+
   // Try to get video track and apply constraints
   const videoTrack = stream.getVideoTracks()[0]
   if (videoTrack) {
@@ -69,21 +137,21 @@ export function createRecorder(canvas, options = {}) {
       videoTrack.applyConstraints({ frameRate: fps })
     } catch (_) { /* ignore */ }
   }
-  
+
   const mediaRecorderOptions = {
     mimeType,
     videoBitsPerSecond: bitrate
   }
-  
+
   const mediaRecorder = new MediaRecorder(stream, mediaRecorderOptions)
   const chunks = []
   let isRecording = false
   let startTime = 0
-  
+
   mediaRecorder.ondataavailable = (e) => {
     if (e.data && e.data.size > 0) chunks.push(e.data)
   }
-  
+
   return {
     start() {
       if (isRecording) return
@@ -93,35 +161,35 @@ export function createRecorder(canvas, options = {}) {
       // Use 100ms timeslice for incremental data availability
       mediaRecorder.start(100)
     },
-    
+
     stop() {
       return new Promise((resolve, reject) => {
         if (!isRecording) {
           reject(new Error('Not recording'))
           return
         }
-        
+
         const onStop = () => {
           const duration = performance.now() - startTime
           const blob = new Blob(chunks, { type: mimeType.split(';')[0] })
           isRecording = false
           resolve({ blob, duration, mimeType, size: blob.size })
         }
-        
+
         const onError = (e) => {
           isRecording = false
           reject(new Error('MediaRecorder error: ' + (e.message || 'Unknown')))
         }
-        
+
         mediaRecorder.onstop = onStop
         mediaRecorder.onerror = onError
         mediaRecorder.stop()
-        
+
         // Stop all tracks to release resources
         stream.getTracks().forEach(t => t.stop())
       })
     },
-    
+
     get isRecording() { return isRecording }
   }
 }
@@ -144,51 +212,51 @@ export async function recordVideo(canvas, drawFrame, options = {}) {
   const bitrate = options.bitrate || 4_000_000
   const onProgress = options.onProgress || (() => {})
   const signal = options.signal
-  
+
   if (signal?.aborted) {
     throw new Error('Recording cancelled')
   }
-  
+
   const ctx = canvas.getContext('2d', { alpha: false })
   const w = canvas.width
   const h = canvas.height
-  
+
   // Setup recorder
   const recorder = createRecorder(canvas, { fps, bitrate })
-  
+
   // Pre-render a few frames to warm up
   ctx.fillStyle = '#e8ecf1'
   ctx.fillRect(0, 0, w, h)
-  
+
   // Small delay to let canvas settle
   await new Promise(r => setTimeout(r, 50))
-  
+
   recorder.start()
-  
+
   const totalFrames = Math.max(Math.ceil(duration / 1000 * fps), 1)
   const frameInterval = 1000 / fps
   const startTime = performance.now()
-  
+
   // Frame buffer for smooth delivery
   let frameCount = 0
-  
+
   for (let i = 0; i <= totalFrames; i++) {
     if (signal?.aborted) {
       recorder.stop().catch(() => {})
       throw new Error('Recording cancelled')
     }
-    
+
     const t = Math.min(i / totalFrames, 1)
     const elapsed = performance.now() - startTime
     const targetTime = i * frameInterval
-    
+
     // Draw the frame
     drawFrame(ctx, w, h, t)
-    
+
     frameCount++
     const progress = t * 100
     onProgress(progress, { frame: i, totalFrames, elapsed, targetTime })
-    
+
     // Wait for next frame timing
     if (i < totalFrames) {
       const waitTime = targetTime + frameInterval - (performance.now() - startTime)
@@ -197,10 +265,10 @@ export async function recordVideo(canvas, drawFrame, options = {}) {
       }
     }
   }
-  
+
   // Small delay before stopping to ensure last frame is captured
   await new Promise(r => setTimeout(r, 100))
-  
+
   const result = await recorder.stop()
   return {
     blob: result.blob,
@@ -219,20 +287,23 @@ export async function recordVideo(canvas, drawFrame, options = {}) {
  * @param {Blob} blob - Video blob
  * @param {Object} options
  * @param {string} options.suggestedName - Default filename
- * @param {string} options.format - 'webm' or auto-detect
+ * @param {string} options.format - 'webm' | 'mp4'
  * @returns {Promise<{success, name, method, fallback?}>}
  */
 export async function saveVideoFile(blob, options = {}) {
-  const suggestedName = options.suggestedName || 'travelboast_video.webm'
-  
+  const format = options.format || 'webm'
+  const ext = format === 'mp4' ? '.mp4' : '.webm'
+  const mimeType = format === 'mp4' ? 'video/mp4' : 'video/webm'
+  const suggestedName = (options.suggestedName || 'travelboast_video').replace(/\.webm$/, '').replace(/\.mp4$/, '') + ext
+
   // Try File System Access API first (modern browsers)
   if (window.showSaveFilePicker) {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName,
         types: [{
-          description: 'WebM 视频',
-          accept: { 'video/webm': ['.webm'] }
+          description: format === 'mp4' ? 'MP4 视频' : 'WebM 视频',
+          accept: { [mimeType]: [ext] }
         }]
       })
       const writable = await handle.createWritable()
@@ -246,7 +317,7 @@ export async function saveVideoFile(blob, options = {}) {
       // Fall through to fallback
     }
   }
-  
+
   // Fallback: auto-download
   try {
     const url = URL.createObjectURL(blob)
@@ -266,7 +337,7 @@ export async function saveVideoFile(blob, options = {}) {
 
 /**
  * Create a blob URL for preview
- * @param {Blob} blob 
+ * @param {Blob} blob
  * @returns {string} Object URL
  */
 export function createPreviewUrl(blob) {
@@ -275,7 +346,7 @@ export function createPreviewUrl(blob) {
 
 /**
  * Revoke a preview URL
- * @param {string} url 
+ * @param {string} url
  */
 export function revokePreviewUrl(url) {
   if (url && url.startsWith('blob:')) {
@@ -295,7 +366,7 @@ export function estimateFileSize(durationMs, bitrate) {
 
 /**
  * Format bytes to human readable
- * @param {number} bytes 
+ * @param {number} bytes
  * @returns {string}
  */
 export function formatFileSize(bytes) {
@@ -311,14 +382,16 @@ export function formatFileSize(bytes) {
  * @param {string} options.ratio - 'vertical' | 'horizontal' | 'square'
  * @param {string} options.quality - quality preset key
  * @param {Array} options.points - route points for naming
+ * @param {string} options.format - 'webm' | 'mp4'
  * @returns {string}
  */
 export function generateFilename(options = {}) {
-  const { ratio = 'vertical', quality = 'standard', points = [] } = options
+  const { ratio = 'vertical', quality = 'standard', points = [], format = 'mp4' } = options
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
   const time = new Date().toISOString().slice(11, 19).replace(/:/g, '')
   const ratioLabel = ratio === 'horizontal' ? '16x9' : ratio === 'square' ? '1x1' : '9x16'
   const startName = points[0]?.name || 'A'
   const endName = points[points.length - 1]?.name || 'B'
-  return `TravelBoast_${startName}to${endName}_${ratioLabel}_${date}_${time}.webm`
+  const ext = format === 'mp4' ? '.mp4' : '.webm'
+  return `TravelBoast_${startName}to${endName}_${ratioLabel}_${date}_${time}${ext}`
 }

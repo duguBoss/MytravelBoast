@@ -7,7 +7,8 @@ import {
   createPreviewUrl,
   revokePreviewUrl,
   generateFilename,
-  formatFileSize
+  formatFileSize,
+  convertWebMToMP4
 } from '../utils/videoRecorder.js'
 
 const props = defineProps({
@@ -406,11 +407,37 @@ function stop() {
 
 async function handleSave() {
   if (!recordedBlob.value) return
+
+  let blobToSave = recordedBlob.value
+
+  // Convert to MP4 if needed
+  if (outputFormat.value === 'mp4' && recordedBlob.value.type.includes('webm')) {
+    isConverting.value = true
+    convertProgress.value = 0
+    emit('toast', '正在转换为 MP4...')
+
+    try {
+      blobToSave = await convertWebMToMP4(recordedBlob.value, (p) => {
+        convertProgress.value = p
+      })
+      emit('toast', '转换完成')
+    } catch (err) {
+      emit('toast', 'MP4转换失败，保存WebM格式')
+      console.error('MP4 conversion failed:', err)
+    } finally {
+      isConverting.value = false
+    }
+  }
+
   const filename = generateFilename({
     ratio: selectedRatio.value,
-    points: props.points
+    points: props.points,
+    format: outputFormat.value
   })
-  const result = await saveVideoFile(recordedBlob.value, { suggestedName: filename })
+  const result = await saveVideoFile(blobToSave, {
+    suggestedName: filename,
+    format: outputFormat.value
+  })
   savedResult.value = result
   if (result.success) {
     emit('toast', result.fallback ? '视频已下载' : `视频已保存: ${result.name}`)
@@ -610,10 +637,25 @@ watch(() => props.show, async (v) => {
         </button>
       </div>
 
+      <!-- Format Toggle -->
+      <div class="format-toggle" v-if="canSave">
+        <button class="format-btn" :class="{ active: outputFormat === 'mp4' }" @click="outputFormat = 'mp4'">MP4</button>
+        <button class="format-btn" :class="{ active: outputFormat === 'webm' }" @click="outputFormat = 'webm'">WebM</button>
+      </div>
+
+      <!-- Convert Progress -->
+      <div class="convert-progress" v-if="isConverting">
+        <div class="convert-bar">
+          <div class="convert-fill" :style="{ width: convertProgress + '%' }"></div>
+        </div>
+        <span class="convert-text">转换中 {{ convertProgress }}%</span>
+      </div>
+
       <!-- Save Button -->
-      <button class="save-btn" @click="canSave ? handleSave() : record()" :disabled="isRecording">
+      <button class="save-btn" @click="canSave ? handleSave() : record()" :disabled="isRecording || isConverting">
         <span v-if="isRecording">录制中...</span>
-        <span v-else-if="canSave">将视频保存到相机相册</span>
+        <span v-else-if="isConverting">转换中...</span>
+        <span v-else-if="canSave">将视频保存到相机相册 ({{ outputFormat.toUpperCase() }})</span>
         <span v-else>开始录制</span>
       </button>
 
@@ -927,5 +969,53 @@ watch(() => props.show, async (v) => {
   font-size: 13px;
   color: #34c759;
   margin-top: 8px;
+}
+
+/* Format Toggle */
+.format-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.format-btn {
+  padding: 8px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.3);
+  background: transparent;
+  color: rgba(255,255,255,0.6);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.format-btn.active {
+  background: #fff;
+  color: #0f1b2e;
+  border-color: #fff;
+}
+
+/* Convert Progress */
+.convert-progress {
+  margin-bottom: 16px;
+  text-align: center;
+}
+.convert-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.convert-fill {
+  height: 100%;
+  background: #f5a623;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.convert-text {
+  font-size: 13px;
+  color: #8b9bb4;
 }
 </style>
