@@ -495,8 +495,10 @@ watch(() => props.show, async (v) => {
     <!-- Map Preview Area -->
     <div class="map-preview-area" :class="getAspectClass()">
       <div class="map-card">
-        <div ref="mapWrapperRef" class="map-3d-wrapper">
-          <div ref="mapContainer" class="map-inner"></div>
+        <div class="map-3d-container">
+          <div ref="mapWrapperRef" class="map-3d-wrapper">
+            <div ref="mapContainer" class="map-inner"></div>
+          </div>
         </div>
         <div v-if="isLoading" class="map-loading">地图加载中...</div>
         <div v-if="isRecording" class="recording-badge">
@@ -709,15 +711,25 @@ watch(() => props.show, async (v) => {
 .map-preview-area.horizontal .map-card { aspect-ratio: 16 / 9; }
 .map-preview-area.square .map-card { aspect-ratio: 1 / 1; }
 
+.map-3d-container {
+  width: 100%;
+  height: 100%;
+  perspective: 1000px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
 .map-3d-wrapper {
   width: 100%;
   height: 100%;
   transform: rotateX(30deg) scale(1.15);
   transform-origin: center center;
-  perspective: 1000px;
 }
-
-.map-inner { width: 100%; height: 100%; }
+.map-inner {
+  width: 100%;
+  height: 100%;
+}
 .map-loading {
   position: absolute;
   inset: 0;
