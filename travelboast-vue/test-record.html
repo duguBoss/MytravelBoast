@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test Video Recording</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    canvas { border: 1px solid #ccc; display: block; margin: 10px 0; }
+    video { border: 1px solid #ccc; display: block; margin: 10px 0; max-width: 400px; }
+    button { padding: 10px 20px; margin: 5px; font-size: 14px; cursor: pointer; }
+    .log { background: #f5f5f5; padding: 10px; margin: 10px 0; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h1>Video Recording Test</h1>
+  <canvas id="canvas" width="360" height="640"></canvas>
+  <div>
+    <button id="recordBtn">Start Recording</button>
+    <button id="playBtn">Play Animation</button>
+    <button id="saveBtn" disabled>Save Video</button>
+  </div>
+  <div id="status">Ready</div>
+  <div class="log" id="log"></div>
+  <video id="video" controls loop style="display:none;"></video>
+
+  <script type="module">
+    import { recordVideo, saveVideoFile, createPreviewUrl, revokePreviewUrl, getPresetForRatio, formatFileSize } from './src/utils/videoRecorder.js';
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const recordBtn = document.getElementById('recordBtn');
+    const playBtn = document.getElementById('playBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const status = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const video = document.getElementById('video');
+
+    function log(msg) {
+      console.log(msg);
+      logEl.innerHTML += msg + '<br>';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // Simple animation frame drawing
+    function drawFrame(ctx, w, h, t) {
+      // Background
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0, '#f0f4f8');
+      grad.addColorStop(0.5, '#e2e8f0');
+      grad.addColorStop(1, '#d1d9e6');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Grid
+      ctx.strokeStyle = 'rgba(0,0,0,0.03)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < w; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      }
+      for (let y = 0; y < h; y += 40) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+
+      // Moving circle
+      const x = 50 + (w - 100) * t;
+      const y = h / 2 + Math.sin(t * Math.PI * 4) * 100;
+
+      ctx.beginPath();
+      ctx.arc(x, y, 30, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff6b4a';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Emoji vehicle
+      ctx.font = '48px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('✈️', x, y);
+
+      // Progress bar
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.fillRect(24, h - 32, w - 48, 6);
+      ctx.fillStyle = '#ff6b4a';
+      ctx.fillRect(24, h - 32, (w - 48) * t, 6);
+
+      // Text
+      ctx.font = 'bold 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#333';
+      ctx.fillText(`Progress: ${(t * 100).toFixed(0)}%`, w / 2, 40);
+    }
+
+    let isPlaying = false;
+    let recordedBlob = null;
+
+    // Play animation
+    playBtn.addEventListener('click', () => {
+      if (isPlaying) return;
+      isPlaying = true;
+      log('Starting animation...');
+      status.textContent = 'Playing...';
+
+      const duration = 3000;
+      const startTime = performance.now();
+
+      function step(now) {
+        const elapsed = now - startTime;
+        const t = Math.min(elapsed / duration, 1);
+        drawFrame(ctx, canvas.width, canvas.height, t);
+
+        if (t < 1) {
+          requestAnimationFrame(step);
+        } else {
+          isPlaying = false;
+          log('Animation finished');
+          status.textContent = 'Ready';
+        }
+      }
+
+      requestAnimationFrame(step);
+    });
+
+    // Record video
+    recordBtn.addEventListener('click', async () => {
+      if (isPlaying) return;
+      log('Starting recording...');
+      status.textContent = 'Recording...';
+      recordBtn.disabled = true;
+      playBtn.disabled = true;
+
+      try {
+        const abortCtrl = new AbortController();
+
+        const result = await recordVideo(canvas, drawFrame, {
+          duration: 3000,
+          fps: 30,
+          bitrate: 4000000,
+          signal: abortCtrl.signal,
+          onProgress: (p) => {
+            status.textContent = `Recording... ${p.toFixed(0)}%`;
+          }
+        });
+
+        recordedBlob = result.blob;
+        log(`Recording complete!`);
+        log(`Frames: ${result.frameCount}, Size: ${formatFileSize(result.size)}, Duration: ${(result.duration / 1000).toFixed(1)}s`);
+        status.textContent = 'Recording complete!';
+        saveBtn.disabled = false;
+
+        // Auto preview
+        const url = createPreviewUrl(recordedBlob);
+        video.src = url;
+        video.style.display = 'block';
+        video.play().catch(() => {});
+
+      } catch (err) {
+        log('Recording failed: ' + err.message);
+        status.textContent = 'Recording failed';
+      } finally {
+        recordBtn.disabled = false;
+        playBtn.disabled = false;
+      }
+    });
+
+    // Save video
+    saveBtn.addEventListener('click', async () => {
+      if (!recordedBlob) return;
+      log('Saving video...');
+      const result = await saveVideoFile(recordedBlob, { suggestedName: 'test_video.webm' });
+      if (result.success) {
+        log('Saved: ' + (result.name || 'downloaded'));
+      } else {
+        log('Save failed: ' + (result.error || 'unknown'));
+      }
+    });
+
+    // Initial draw
+    drawFrame(ctx, canvas.width, canvas.height, 0);
+    log('Test page loaded. Click Play or Record.');
+  </script>
+</body>
+</html>
