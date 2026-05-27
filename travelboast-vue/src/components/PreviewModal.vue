@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, nextTick, computed } from 'vue'
 import L from 'leaflet'
+import html2canvas from 'html2canvas'
 import { tileUrls, tileSubdomains } from '../constants/map.js'
 import {
   saveVideoFile,
@@ -24,10 +25,12 @@ const fmtSize = formatFileSize
 // DOM refs
 const mapContainer = ref(null)
 const previewVideo = ref(null)
-const recordCanvas = ref(null)
+const mapWrapperRef = ref(null)
 
 // State
 const isRecording = ref(false)
+const isConverting = ref(false)
+const convertProgress = ref(0)
 const isLoading = ref(false)
 const progress = ref(0)
 const canSave = ref(false)
@@ -36,11 +39,7 @@ const recordedBlob = ref(null)
 const previewUrl = ref(null)
 const showPreviewPlayer = ref(false)
 const recordStats = ref(null)
-
-// Local settings for preview page
-const videoDuration = ref(5)
-const modelSize = ref(0.65)
-const selectedRatio = ref(props.settings?.ratio || 'vertical')
+const outputFormat = ref('mp4')
 
 // Map refs
 let mapInstance = null
@@ -51,11 +50,16 @@ let mediaRecorder = null
 let recordChunks = []
 
 // Offscreen canvas for recording
-let offscreenCtx = null
 let offscreenCanvas = null
+let offscreenCtx = null
 
 const durationDisplay = computed(() => Math.round(videoDuration.value) + ' 秒')
 const sizeDisplay = computed(() => modelSize.value.toFixed(2))
+
+// Local settings for preview page
+const videoDuration = ref(5)
+const modelSize = ref(0.65)
+const selectedRatio = ref(props.settings?.ratio || 'vertical')
 
 function getMapSize() {
   const r = selectedRatio.value
@@ -119,6 +123,24 @@ function initMap() {
     className: '', iconSize: [40, 40], iconAnchor: [20, 20]
   })
   vehicleMarker = L.marker(latlngs[0], { icon: vehicleIcon, interactive: false, zIndexOffset: 1000 }).addTo(mapInstance)
+
+  // Apply 3D tilt effect for recording
+  apply3DTilt()
+}
+
+function apply3DTilt() {
+  const wrapper = mapWrapperRef.value
+  if (!wrapper) return
+  // Default 30deg tilt for recording
+  wrapper.style.transform = `rotateX(30deg) scale(1.15)`
+  wrapper.style.transformOrigin = 'center center'
+  wrapper.style.perspective = '1000px'
+}
+
+function remove3DTilt() {
+  const wrapper = mapWrapperRef.value
+  if (!wrapper) return
+  wrapper.style.transform = ''
 }
 
 function updateVehicle(t) {
@@ -158,111 +180,34 @@ function updateVehicle(t) {
   return { lat, lng, segIdx }
 }
 
-// Capture map to offscreen canvas
-function captureMapToCanvas() {
-  if (!mapInstance || !offscreenCtx) return
+// Capture map using html2canvas (captures everything including CSS transforms)
+async function captureMapFrame() {
+  if (!mapContainer.value || !offscreenCtx) return
 
   const { w, h } = getMapSize()
-  const mapPane = mapContainer.value.querySelector('.leaflet-map-pane')
-  if (!mapPane) return
 
-  // Use html2canvas-like approach: draw the map container
-  // For simplicity, we capture the tile canvas and overlay markers manually
-  const tileCanvas = mapContainer.value.querySelector('canvas')
-  if (tileCanvas) {
-    offscreenCtx.drawImage(tileCanvas, 0, 0, w, h)
+  try {
+    // Capture the map container with html2canvas
+    // This captures CSS transforms, DOM elements, everything
+    const canvas = await html2canvas(mapContainer.value, {
+      width: w,
+      height: h,
+      scale: 1,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: null,
+      logging: false,
+      imageTimeout: 0
+    })
+
+    // Draw captured frame to offscreen canvas
+    offscreenCtx.drawImage(canvas, 0, 0, w, h)
+  } catch (err) {
+    console.error('html2canvas capture failed:', err)
+    // Fallback: fill with background color
+    offscreenCtx.fillStyle = '#e8ecf1'
+    offscreenCtx.fillRect(0, 0, w, h)
   }
-
-  // Draw route line (simplified - draw a line between points)
-  drawRouteOnCanvas()
-
-  // Draw markers
-  drawMarkersOnCanvas()
-
-  // Draw vehicle
-  drawVehicleOnCanvas()
-}
-
-function drawRouteOnCanvas() {
-  if (!mapInstance || !offscreenCtx) return
-  const latlngs = props.points.map(p => [p.lat, p.lng])
-
-  offscreenCtx.save()
-  offscreenCtx.strokeStyle = '#ff6b4a'
-  offscreenCtx.lineWidth = 4
-  offscreenCtx.lineCap = 'round'
-  offscreenCtx.lineJoin = 'round'
-  offscreenCtx.setLineDash([6, 4])
-  offscreenCtx.beginPath()
-
-  let first = true
-  for (const [lat, lng] of latlngs) {
-    const pt = mapInstance.latLngToContainerPoint([lat, lng])
-    if (first) {
-      offscreenCtx.moveTo(pt.x, pt.y)
-      first = false
-    } else {
-      offscreenCtx.lineTo(pt.x, pt.y)
-    }
-  }
-  offscreenCtx.stroke()
-  offscreenCtx.restore()
-}
-
-function drawMarkersOnCanvas() {
-  if (!mapInstance || !offscreenCtx) return
-
-  // Start marker (A)
-  const startPt = mapInstance.latLngToContainerPoint([props.points[0].lat, props.points[0].lng])
-  drawPinOnCanvas(startPt.x, startPt.y, 'A', '#34c759')
-
-  // End marker (B)
-  const endPt = mapInstance.latLngToContainerPoint([props.points[props.points.length - 1].lat, props.points[props.points.length - 1].lng])
-  drawPinOnCanvas(endPt.x, endPt.y, 'B', '#ff6b4a')
-}
-
-function drawPinOnCanvas(x, y, label, color) {
-  offscreenCtx.save()
-  // Circle background
-  offscreenCtx.beginPath()
-  offscreenCtx.arc(x, y, 14, 0, Math.PI * 2)
-  offscreenCtx.fillStyle = color
-  offscreenCtx.fill()
-  offscreenCtx.lineWidth = 3
-  offscreenCtx.strokeStyle = '#fff'
-  offscreenCtx.stroke()
-  // Shadow
-  offscreenCtx.shadowColor = 'rgba(0,0,0,0.25)'
-  offscreenCtx.shadowBlur = 8
-  offscreenCtx.shadowOffsetY = 2
-  // Text
-  offscreenCtx.fillStyle = '#fff'
-  offscreenCtx.font = 'bold 12px sans-serif'
-  offscreenCtx.textAlign = 'center'
-  offscreenCtx.textBaseline = 'middle'
-  offscreenCtx.fillText(label, x, y)
-  offscreenCtx.restore()
-}
-
-function drawVehicleOnCanvas() {
-  if (!mapInstance || !offscreenCtx || !vehicleMarker) return
-
-  const ll = vehicleMarker.getLatLng()
-  const pt = mapInstance.latLngToContainerPoint([ll.lat, ll.lng])
-  const size = 32 * modelSize.value
-
-  offscreenCtx.save()
-  offscreenCtx.font = `${size}px serif`
-  offscreenCtx.textAlign = 'center'
-  offscreenCtx.textBaseline = 'middle'
-  offscreenCtx.shadowColor = 'rgba(0,0,0,0.3)'
-  offscreenCtx.shadowBlur = 6
-  offscreenCtx.shadowOffsetY = 3
-
-  // Get current vehicle icon
-  const v = props.segments[0]?.vehicle || { icon: '✈️' }
-  offscreenCtx.fillText(v.icon || '✈️', pt.x, pt.y)
-  offscreenCtx.restore()
 }
 
 async function record() {
@@ -306,8 +251,7 @@ async function record() {
   const mimeTypes = [
     'video/webm; codecs=vp9',
     'video/webm; codecs=vp8',
-    'video/webm',
-    'video/mp4'
+    'video/webm'
   ]
   let mimeType = ''
   for (const mt of mimeTypes) {
@@ -348,12 +292,15 @@ async function record() {
   mediaRecorder.start(100)
 
   // Animate and capture frames
-  const totalDist = props.segments.reduce((s, seg) => s + seg.distance, 0)
   const durationMs = videoDuration.value * 1000
   const startTime = performance.now()
   let lastCaptureTime = 0
+  let frameCount = 0
 
-  function step(now) {
+  // Pre-warm: capture a few frames before starting
+  await captureMapFrame()
+
+  async function step(now) {
     const elapsed = now - startTime
     const t = Math.min(elapsed / durationMs, 1)
     progress.value = t * 100
@@ -361,26 +308,23 @@ async function record() {
     // Update vehicle position on map
     updateVehicle(t)
 
-    // Capture to offscreen canvas (throttle to ~30fps)
-    if (now - lastCaptureTime >= 33) {
-      captureMapToCanvas()
+    // Capture frame using html2canvas (throttled to ~15fps for performance)
+    if (now - lastCaptureTime >= 66) {
+      await captureMapFrame()
       lastCaptureTime = now
+      frameCount++
     }
 
     if (t < 1) {
       animRaf = requestAnimationFrame(step)
     } else {
       // Final capture
-      captureMapToCanvas()
+      await captureMapFrame()
       finishRecording()
     }
   }
 
-  // Initial capture
-  setTimeout(() => {
-    captureMapToCanvas()
-    animRaf = requestAnimationFrame(step)
-  }, 500) // Wait for map tiles to load
+  animRaf = requestAnimationFrame(step)
 }
 
 function finishRecording() {
@@ -551,7 +495,9 @@ watch(() => props.show, async (v) => {
     <!-- Map Preview Area -->
     <div class="map-preview-area" :class="getAspectClass()">
       <div class="map-card">
-        <div ref="mapContainer" class="map-inner"></div>
+        <div ref="mapWrapperRef" class="map-3d-wrapper">
+          <div ref="mapContainer" class="map-inner"></div>
+        </div>
         <div v-if="isLoading" class="map-loading">地图加载中...</div>
         <div v-if="isRecording" class="recording-badge">
           <span class="rec-dot"></span>
@@ -762,6 +708,15 @@ watch(() => props.show, async (v) => {
 .map-preview-area.vertical .map-card { aspect-ratio: 9 / 16; }
 .map-preview-area.horizontal .map-card { aspect-ratio: 16 / 9; }
 .map-preview-area.square .map-card { aspect-ratio: 1 / 1; }
+
+.map-3d-wrapper {
+  width: 100%;
+  height: 100%;
+  transform: rotateX(30deg) scale(1.15);
+  transform-origin: center center;
+  perspective: 1000px;
+}
+
 .map-inner { width: 100%; height: 100%; }
 .map-loading {
   position: absolute;
@@ -934,43 +889,6 @@ watch(() => props.show, async (v) => {
 .tool-btn.active { color: #fff; }
 .tool-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* Save Button */
-.save-btn {
-  width: 100%;
-  padding: 16px 20px;
-  border-radius: 28px;
-  border: none;
-  background: #fff;
-  color: #0f1b2e;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-}
-.save-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.2);
-}
-.save-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Stats */
-.record-stats {
-  text-align: center;
-  margin-top: 10px;
-  font-size: 12px;
-  color: #8b9bb4;
-}
-.save-hint {
-  text-align: center;
-  font-size: 13px;
-  color: #34c759;
-  margin-top: 8px;
-}
-
 /* Format Toggle */
 .format-toggle {
   display: flex;
@@ -1017,5 +935,42 @@ watch(() => props.show, async (v) => {
 .convert-text {
   font-size: 13px;
   color: #8b9bb4;
+}
+
+/* Save Button */
+.save-btn {
+  width: 100%;
+  padding: 16px 20px;
+  border-radius: 28px;
+  border: none;
+  background: #fff;
+  color: #0f1b2e;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+.save-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+.save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Stats */
+.record-stats {
+  text-align: center;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #8b9bb4;
+}
+.save-hint {
+  text-align: center;
+  font-size: 13px;
+  color: #34c759;
+  margin-top: 8px;
 }
 </style>
