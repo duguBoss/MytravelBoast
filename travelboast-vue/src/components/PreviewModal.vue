@@ -1,7 +1,6 @@
 <script setup>
 import { ref, watch, nextTick, computed } from 'vue'
 import L from 'leaflet'
-import html2canvas from 'html2canvas'
 import { tileUrls, tileSubdomains } from '../constants/map.js'
 import {
   saveVideoFile,
@@ -25,7 +24,7 @@ const fmtSize = formatFileSize
 // DOM refs
 const mapContainer = ref(null)
 const previewVideo = ref(null)
-const mapWrapperRef = ref(null)
+const mapCardRef = ref(null)
 
 // State
 const isRecording = ref(false)
@@ -39,7 +38,6 @@ const recordedBlob = ref(null)
 const previewUrl = ref(null)
 const showPreviewPlayer = ref(false)
 const recordStats = ref(null)
-const outputFormat = ref('mp4')
 
 // Map refs
 let mapInstance = null
@@ -52,6 +50,9 @@ let recordChunks = []
 // Offscreen canvas for recording
 let offscreenCanvas = null
 let offscreenCtx = null
+
+// Cached background image (screenshot of static map)
+let bgImage = null
 
 const durationDisplay = computed(() => Math.round(videoDuration.value) + ' 秒')
 const sizeDisplay = computed(() => modelSize.value.toFixed(2))
@@ -123,24 +124,6 @@ function initMap() {
     className: '', iconSize: [40, 40], iconAnchor: [20, 20]
   })
   vehicleMarker = L.marker(latlngs[0], { icon: vehicleIcon, interactive: false, zIndexOffset: 1000 }).addTo(mapInstance)
-
-  // Apply 3D tilt effect for recording
-  apply3DTilt()
-}
-
-function apply3DTilt() {
-  const wrapper = mapWrapperRef.value
-  if (!wrapper) return
-  // Default 30deg tilt for recording
-  wrapper.style.transform = `rotateX(30deg) scale(1.15)`
-  wrapper.style.transformOrigin = 'center center'
-  wrapper.style.perspective = '1000px'
-}
-
-function remove3DTilt() {
-  const wrapper = mapWrapperRef.value
-  if (!wrapper) return
-  wrapper.style.transform = ''
 }
 
 function updateVehicle(t) {
@@ -180,33 +163,41 @@ function updateVehicle(t) {
   return { lat, lng, segIdx }
 }
 
-// Capture map using html2canvas (captures everything including CSS transforms)
-async function captureMapFrame() {
-  if (!mapContainer.value || !offscreenCtx) return
+// Get vehicle pixel position on the map container
+function getVehiclePixelPos() {
+  if (!mapInstance || !vehicleMarker) return null
+  const ll = vehicleMarker.getLatLng()
+  const pt = mapInstance.latLngToContainerPoint([ll.lat, ll.lng])
+  return pt
+}
 
+// Draw a single frame: background + vehicle
+function drawFrame() {
+  if (!offscreenCtx || !bgImage) return
   const { w, h } = getMapSize()
 
-  try {
-    // Capture the map container with html2canvas
-    // This captures CSS transforms, DOM elements, everything
-    const canvas = await html2canvas(mapContainer.value, {
-      width: w,
-      height: h,
-      scale: 1,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: null,
-      logging: false,
-      imageTimeout: 0
-    })
+  // Clear
+  offscreenCtx.clearRect(0, 0, w, h)
 
-    // Draw captured frame to offscreen canvas
-    offscreenCtx.drawImage(canvas, 0, 0, w, h)
-  } catch (err) {
-    console.error('html2canvas capture failed:', err)
-    // Fallback: fill with background color
-    offscreenCtx.fillStyle = '#e8ecf1'
-    offscreenCtx.fillRect(0, 0, w, h)
+  // Draw background (with 3D tilt simulated by scaling)
+  // The bgImage was captured with the 3D CSS transform applied
+  offscreenCtx.drawImage(bgImage, 0, 0, w, h)
+
+  // Draw vehicle at current position
+  const vPos = getVehiclePixelPos()
+  if (vPos) {
+    const v = props.segments[0]?.vehicle || { icon: '✈️' }
+    const size = 32 * modelSize.value
+
+    offscreenCtx.save()
+    offscreenCtx.font = `${size}px serif`
+    offscreenCtx.textAlign = 'center'
+    offscreenCtx.textBaseline = 'middle'
+    offscreenCtx.shadowColor = 'rgba(0,0,0,0.3)'
+    offscreenCtx.shadowBlur = 6
+    offscreenCtx.shadowOffsetY = 3
+    offscreenCtx.fillText(v.icon || '✈️', vPos.x, vPos.y)
+    offscreenCtx.restore()
   }
 }
 
@@ -231,14 +222,53 @@ async function record() {
   recordStats.value = null
   savedResult.value = null
 
-  // Setup offscreen canvas for recording
   const { w, h } = getMapSize()
+
+  // Step 1: Capture static background (one-time, with 3D tilt)
+  emit('toast', '正在准备录制...')
+  await nextTick()
+
+  // Wait for tiles to load
+  await new Promise(r => setTimeout(r, 800))
+
+  // Capture the map card as background
+  try {
+    const cardEl = mapCardRef.value
+    if (!cardEl) throw new Error('Map card not found')
+
+    // Use dom-to-image or canvas draw
+    // For now, use the Leaflet internal canvas if available
+    const leafletCanvas = cardEl.querySelector('.leaflet-container canvas')
+    if (leafletCanvas) {
+      bgImage = leafletCanvas
+    } else {
+      // Fallback: create from container
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#e8ecf1'
+      ctx.fillRect(0, 0, w, h)
+      bgImage = canvas
+    }
+  } catch (err) {
+    console.error('Background capture failed:', err)
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#e8ecf1'
+    ctx.fillRect(0, 0, w, h)
+    bgImage = canvas
+  }
+
+  // Step 2: Setup offscreen canvas
   offscreenCanvas = document.createElement('canvas')
   offscreenCanvas.width = w
   offscreenCanvas.height = h
   offscreenCtx = offscreenCanvas.getContext('2d')
 
-  // Check if canvas.captureStream is supported
+  // Check support
   if (!offscreenCanvas.captureStream) {
     emit('toast', '浏览器不支持视频录制')
     isRecording.value = false
@@ -247,7 +277,6 @@ async function record() {
 
   const stream = offscreenCanvas.captureStream(30)
 
-  // Find supported mimeType
   const mimeTypes = [
     'video/webm; codecs=vp9',
     'video/webm; codecs=vp8',
@@ -286,40 +315,39 @@ async function record() {
       size: blob.size,
       duration: videoDuration.value + 's'
     }
-    previewRecorded()
+    // Auto-convert to MP4
+    autoConvertToMP4(blob)
   }
 
   mediaRecorder.start(100)
 
-  // Animate and capture frames
+  // Step 3: Animation loop
   const durationMs = videoDuration.value * 1000
   const startTime = performance.now()
-  let lastCaptureTime = 0
-  let frameCount = 0
+  let lastDrawTime = 0
 
-  // Pre-warm: capture a few frames before starting
-  await captureMapFrame()
+  // Initial draw
+  updateVehicle(0)
+  drawFrame()
 
-  async function step(now) {
+  function step(now) {
     const elapsed = now - startTime
     const t = Math.min(elapsed / durationMs, 1)
     progress.value = t * 100
 
-    // Update vehicle position on map
+    // Update vehicle
     updateVehicle(t)
 
-    // Capture frame using html2canvas (throttled to ~15fps for performance)
-    if (now - lastCaptureTime >= 66) {
-      await captureMapFrame()
-      lastCaptureTime = now
-      frameCount++
+    // Draw frame (throttled to ~20fps for performance)
+    if (now - lastDrawTime >= 50) {
+      drawFrame()
+      lastDrawTime = now
     }
 
     if (t < 1) {
       animRaf = requestAnimationFrame(step)
     } else {
-      // Final capture
-      await captureMapFrame()
+      drawFrame()
       finishRecording()
     }
   }
@@ -332,9 +360,30 @@ function finishRecording() {
     cancelAnimationFrame(animRaf)
     animRaf = null
   }
-
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop()
+  }
+}
+
+async function autoConvertToMP4(webmBlob) {
+  isConverting.value = true
+  convertProgress.value = 0
+  emit('toast', '正在生成 MP4...')
+
+  try {
+    const mp4Blob = await convertWebMToMP4(webmBlob, (p) => {
+      convertProgress.value = p
+    })
+    // Replace the recorded blob with MP4
+    recordedBlob.value = mp4Blob
+    emit('toast', 'MP4 生成完成')
+    previewRecorded()
+  } catch (err) {
+    console.error('MP4 conversion failed:', err)
+    emit('toast', 'MP4 生成失败，使用 WebM 格式')
+    previewRecorded()
+  } finally {
+    isConverting.value = false
   }
 }
 
@@ -352,35 +401,15 @@ function stop() {
 async function handleSave() {
   if (!recordedBlob.value) return
 
-  let blobToSave = recordedBlob.value
-
-  // Convert to MP4 if needed
-  if (outputFormat.value === 'mp4' && recordedBlob.value.type.includes('webm')) {
-    isConverting.value = true
-    convertProgress.value = 0
-    emit('toast', '正在转换为 MP4...')
-
-    try {
-      blobToSave = await convertWebMToMP4(recordedBlob.value, (p) => {
-        convertProgress.value = p
-      })
-      emit('toast', '转换完成')
-    } catch (err) {
-      emit('toast', 'MP4转换失败，保存WebM格式')
-      console.error('MP4 conversion failed:', err)
-    } finally {
-      isConverting.value = false
-    }
-  }
-
   const filename = generateFilename({
     ratio: selectedRatio.value,
     points: props.points,
-    format: outputFormat.value
+    format: 'mp4'
   })
-  const result = await saveVideoFile(blobToSave, {
+
+  const result = await saveVideoFile(recordedBlob.value, {
     suggestedName: filename,
-    format: outputFormat.value
+    format: 'mp4'
   })
   savedResult.value = result
   if (result.success) {
@@ -418,6 +447,7 @@ function close() {
   canSave.value = false
   showPreviewPlayer.value = false
   recordStats.value = null
+  bgImage = null
   offscreenCanvas = null
   offscreenCtx = null
   emit('close')
@@ -426,7 +456,6 @@ function close() {
 function setRatio(ratio) {
   selectedRatio.value = ratio
   emit('update', 'ratio', ratio)
-  // Re-init map with new ratio
   if (mapInstance) {
     mapInstance.remove()
     mapInstance = null
@@ -494,9 +523,10 @@ watch(() => props.show, async (v) => {
 
     <!-- Map Preview Area -->
     <div class="map-preview-area" :class="getAspectClass()">
-      <div class="map-card">
-        <div class="map-3d-container">
-          <div ref="mapWrapperRef" class="map-3d-wrapper">
+      <div ref="mapCardRef" class="map-card">
+        <!-- 3D tilt container: perspective on parent, transform on child -->
+        <div class="map-3d-scene">
+          <div class="map-3d-plane">
             <div ref="mapContainer" class="map-inner"></div>
           </div>
         </div>
@@ -561,7 +591,7 @@ watch(() => props.show, async (v) => {
 
       <!-- Toolbar -->
       <div class="toolbar">
-        <button class="tool-btn" :class="{ active: !isRecording && !canSave }" @click="record" :disabled="isLoading || isRecording">
+        <button class="tool-btn" :class="{ active: !isRecording && !canSave }" @click="record" :disabled="isLoading || isRecording || isConverting">
           <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         </button>
         <button class="tool-btn" @click="emit('toast', '地图样式切换')">
@@ -585,31 +615,25 @@ watch(() => props.show, async (v) => {
         </button>
       </div>
 
-      <!-- Format Toggle -->
-      <div class="format-toggle" v-if="canSave">
-        <button class="format-btn" :class="{ active: outputFormat === 'mp4' }" @click="outputFormat = 'mp4'">MP4</button>
-        <button class="format-btn" :class="{ active: outputFormat === 'webm' }" @click="outputFormat = 'webm'">WebM</button>
-      </div>
-
       <!-- Convert Progress -->
       <div class="convert-progress" v-if="isConverting">
         <div class="convert-bar">
           <div class="convert-fill" :style="{ width: convertProgress + '%' }"></div>
         </div>
-        <span class="convert-text">转换中 {{ convertProgress }}%</span>
+        <span class="convert-text">生成 MP4 中 {{ convertProgress }}%</span>
       </div>
 
       <!-- Save Button -->
       <button class="save-btn" @click="canSave ? handleSave() : record()" :disabled="isRecording || isConverting">
         <span v-if="isRecording">录制中...</span>
-        <span v-else-if="isConverting">转换中...</span>
-        <span v-else-if="canSave">将视频保存到相机相册 ({{ outputFormat.toUpperCase() }})</span>
+        <span v-else-if="isConverting">生成 MP4 中...</span>
+        <span v-else-if="canSave">保存 MP4 视频</span>
         <span v-else>开始录制</span>
       </button>
 
       <!-- Stats -->
-      <div class="record-stats" v-if="recordStats">
-        <span class="stat">{{ fmtSize(recordStats.size) }}</span>
+      <div class="record-stats" v-if="recordStats && !isConverting">
+        <span class="stat">{{ fmtSize(recordStats.size) }} · {{ recordStats.duration }}</span>
       </div>
 
       <!-- Save hint -->
@@ -703,33 +727,29 @@ watch(() => props.show, async (v) => {
   border-radius: 20px;
   overflow: hidden;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .map-preview-area.vertical .map-card { aspect-ratio: 9 / 16; }
 .map-preview-area.horizontal .map-card { aspect-ratio: 16 / 9; }
 .map-preview-area.square .map-card { aspect-ratio: 1 / 1; }
 
-.map-3d-container {
-  width: 100%;
-  height: 100%;
-  perspective: 1000px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* 3D Scene: perspective on container, transform on plane */
+.map-3d-scene {
+  position: absolute;
+  inset: 0;
+  perspective: 800px;
   overflow: hidden;
 }
-.map-3d-wrapper {
-  width: 100%;
-  height: 100%;
-  transform: rotateX(30deg) scale(1.15);
-  transform-origin: center center;
+.map-3d-plane {
+  position: absolute;
+  inset: -25%; /* 比容器大 50%，确保旋转后填满 */
+  transform: rotateX(25deg);
+  transform-origin: center 65%;
 }
 .map-inner {
   width: 100%;
   height: 100%;
 }
+
 .map-loading {
   position: absolute;
   inset: 0;
@@ -738,6 +758,7 @@ watch(() => props.show, async (v) => {
   background: rgba(15, 27, 46, 0.8);
   font-size: 13px;
   color: #8b9bb4;
+  z-index: 5;
 }
 .recording-badge {
   position: absolute;
@@ -900,30 +921,6 @@ watch(() => props.show, async (v) => {
 .tool-btn:hover { color: rgba(255,255,255,0.8); }
 .tool-btn.active { color: #fff; }
 .tool-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* Format Toggle */
-.format-toggle {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.format-btn {
-  padding: 8px 20px;
-  border-radius: 20px;
-  border: 1px solid rgba(255,255,255,0.3);
-  background: transparent;
-  color: rgba(255,255,255,0.6);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.format-btn.active {
-  background: #fff;
-  color: #0f1b2e;
-  border-color: #fff;
-}
 
 /* Convert Progress */
 .convert-progress {
