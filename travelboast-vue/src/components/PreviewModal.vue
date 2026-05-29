@@ -55,6 +55,7 @@
 
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue'
+import html2canvas from 'html2canvas'
 import { recordVideo, saveVideoFile, generateFilename, getPresetForRatio } from '../utils/videoRecorder.js'
 
 const props = defineProps({
@@ -65,7 +66,7 @@ const props = defineProps({
   settings: Object,
 })
 
-const emit = defineEmits(['close', 'toast'])
+const emit = defineEmits(['close', 'toast', 'update:settings'])
 
 const previewCanvas = ref(null)
 const canvasWidth = ref(800)
@@ -77,6 +78,7 @@ const isExporting = ref(false)
 const progress = ref(0)
 const frameInfo = ref('')
 const exportStatus = ref('')
+const mapBackground = ref(null)
 
 let animFrame = null
 let animStartTime = 0
@@ -98,6 +100,12 @@ watch(() => props.settings?.ratio, (val) => {
     canvasHeight.value = 450
   }
 }, { immediate: true })
+
+watch(() => props.show, (val) => {
+  if (val) {
+    loadMapBackground()
+  }
+})
 
 function getCanvasPoint(point, bounds, width, height) {
   const margin = 60
@@ -188,17 +196,43 @@ function bearing(lat1, lng1, lat2, lng2) {
   return Math.atan2(y, x) * 180 / Math.PI
 }
 
+async function loadMapBackground() {
+  try {
+    const mapEl = document.getElementById('map')
+    if (!mapEl) return
+
+    emit('toast', '正在加载地图背景...')
+    
+    const canvas = await html2canvas(mapEl, {
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: null,
+      scale: 1,
+    })
+    
+    mapBackground.value = canvas
+    emit('toast', '地图加载完成')
+  } catch (err) {
+    console.error('加载地图失败:', err)
+    emit('toast', '地图加载失败')
+    mapBackground.value = null
+  }
+}
+
 function drawFrame(ctx, W, H, t) {
   ctx.clearRect(0, 0, W, H)
 
-  const gradient = ctx.createLinearGradient(0, 0, W, H)
-  gradient.addColorStop(0, '#1a1a2e')
-  gradient.addColorStop(0.5, '#16213e')
-  gradient.addColorStop(1, '#0f3460')
-  ctx.fillStyle = gradient
-  ctx.fillRect(0, 0, W, H)
-
-  drawGrid(ctx, W, H)
+  if (mapBackground.value) {
+    ctx.drawImage(mapBackground.value, 0, 0, W, H)
+  } else {
+    const gradient = ctx.createLinearGradient(0, 0, W, H)
+    gradient.addColorStop(0, '#1a1a2e')
+    gradient.addColorStop(0.5, '#16213e')
+    gradient.addColorStop(1, '#0f3460')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, W, H)
+  }
 
   const bounds = getRouteBounds()
   if (!bounds || !props.points || props.points.length < 2) return
@@ -207,25 +241,6 @@ function drawFrame(ctx, W, H, t) {
   drawPins(ctx, W, H, bounds)
   drawDistanceLabels(ctx, W, H, bounds)
   drawVehicle(ctx, W, H, bounds, t)
-}
-
-function drawGrid(ctx, W, H) {
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'
-  ctx.lineWidth = 1
-  
-  const gridSize = 50
-  for (let x = 0; x <= W; x += gridSize) {
-    ctx.beginPath()
-    ctx.moveTo(x, 0)
-    ctx.lineTo(x, H)
-    ctx.stroke()
-  }
-  for (let y = 0; y <= H; y += gridSize) {
-    ctx.beginPath()
-    ctx.moveTo(0, y)
-    ctx.lineTo(W, y)
-    ctx.stroke()
-  }
 }
 
 function drawRoute(ctx, W, H, bounds, t) {
@@ -385,6 +400,10 @@ function getTotalDistance() {
 async function startPreview() {
   if (isRecording.value || isPlaying.value) return
 
+  if (!mapBackground.value) {
+    await loadMapBackground()
+  }
+
   isPlaying.value = true
   animStartTime = performance.now()
   animDuration = (props.settings?.videoDuration || 15) * 1000
@@ -430,6 +449,10 @@ async function toggleRecording() {
 }
 
 async function startRecording() {
+  if (!mapBackground.value) {
+    await loadMapBackground()
+  }
+
   isRecording.value = true
   progress.value = 0
 
