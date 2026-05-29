@@ -25,15 +25,17 @@ watch(() => props.message, (msg) => {
 <style scoped>
 .toast {
   position: fixed;
-  bottom: 200px; left: 50%;
+  bottom: 32px; left: 50%;
   transform: translateX(-50%) translateY(16px);
-  background: var(--fg);
+  background: rgba(26, 29, 43, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: #fff;
   padding: 10px 20px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
   opacity: 0;
   pointer-events: none;
   transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
@@ -42,5 +44,14 @@ watch(() => props.message, (msg) => {
 .toast.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 768px) {
+  .toast {
+    bottom: 24px;
+    padding: 8px 16px;
+    font-size: 12px;
+    border-radius: 10px;
+  }
 }
 </style>

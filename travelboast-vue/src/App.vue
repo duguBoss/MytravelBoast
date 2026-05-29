@@ -34,6 +34,7 @@ const settings = reactive({
 // UI state
 const leftOpen = ref(false)
 const settingsOpen = ref(false)
+const vehiclePanelOpen = ref(false)
 const activeCat = ref('all')
 const toastMsg = ref('')
 const showPreview = ref(false)
@@ -105,11 +106,9 @@ function syncSegments() {
 }
 
 function updateDistances() {
-  // Generate dense path points for realistic route following
   routePathPoints = generateMultiSegmentPath(points, 100)
   routeTotalDistance = calculatePathDistance(routePathPoints)
 
-  // Also update segment distances for display
   segments.forEach((s, i) => {
     const d = haversine(points[i].lat, points[i].lng, points[i+1].lat, points[i+1].lng)
     s.distance = d
@@ -156,7 +155,6 @@ function renderRoute() {
 
 function renderRouteLine() {
   if (routeLine) map.removeLayer(routeLine)
-  // Use dense path points for realistic route line rendering
   const latlngs = routePathPoints.length > 0
     ? routePathPoints.map(p => [p.lat, p.lng])
     : points.map(p => [p.lat, p.lng])
@@ -168,7 +166,6 @@ function renderRouteLine() {
 
 function renderVehicle() {
   if (use3DModel.value) {
-    // Hide Leaflet marker when using 3D model
     if (vehicleMarker) {
       map.removeLayer(vehicleMarker)
       vehicleMarker = null
@@ -183,7 +180,6 @@ function renderVehicle() {
     return
   }
 
-  // Fallback to emoji marker
   if (vehicleMarker) map.removeLayer(vehicleMarker)
   const v = segments[0]?.vehicle || vehicles[0]
   let angle = 0
@@ -199,7 +195,6 @@ function renderVehicle() {
 }
 
 function updateVehiclePosition(t) {
-  // Use dense path points for realistic vehicle movement
   if (routePathPoints.length >= 2) {
     const pos = getVehiclePositionOnPath(routePathPoints, t)
 
@@ -220,7 +215,6 @@ function updateVehiclePosition(t) {
     return
   }
 
-  // Fallback: straight line interpolation if no path points
   const totalDist = segments.reduce((s, seg) => s + seg.distance, 0)
   const targetDist = totalDist * t
 
@@ -339,7 +333,6 @@ function playAnimation() {
   }
   if (isPlaying.value) return
 
-  // Ensure vehicle marker exists
   if (!vehicleMarker && !use3DModel.value) {
     renderVehicle()
   }
@@ -374,7 +367,6 @@ function stopAnimation() {
   isPlaying.value = false
 }
 
-// Export preview (opens modal for recording)
 function openExport() {
   if (points.length < 2) {
     showToast('请至少设置起点和终点')
@@ -384,21 +376,20 @@ function openExport() {
   showPreview.value = true
 }
 
-// Vehicle selection
 function selectVehicle(v) {
   selVehicle.value = v
   if (segments[selSegment.value]) segments[selSegment.value].vehicle = v
+  vehiclePanelOpen.value = false
   showToast('已选择：' + v.name)
 }
 
-// Settings
 function updateSetting(key, val) {
   settings[key] = val
 }
 
-// Add stop
 function addStop() {
   showToast('点击地图添加途经点')
+  leftOpen.value = false
   map._addingStop = true
   map.getContainer().style.cursor = 'crosshair'
   const handler = (e) => {
@@ -410,7 +401,6 @@ function addStop() {
   map.on('click', handler)
 }
 
-// Clear route
 function clearRoute() {
   points.splice(0, points.length,
     { id: uid(), name: '北京', lat: 39.9042, lng: 116.4074, type: 'start' },
@@ -421,18 +411,24 @@ function clearRoute() {
   showToast('路线已重置')
 }
 
-// Route panel select
 function selectRoutePoint(i) {
   selSegment.value = i
   const p = points[i]
   if (map) map.flyTo([p.lat, p.lng], 10, { duration: 0.8 })
 }
 
-// Set segment vehicle from route panel
 function setSegmentVehicle(i) {
   selSegment.value = i
   segments[i].vehicle = selVehicle.value
   showToast('路段 ' + (i+1) + ' 交通工具已更新')
+}
+
+function toggleVehiclePanel() {
+  vehiclePanelOpen.value = !vehiclePanelOpen.value
+  if (vehiclePanelOpen.value) {
+    leftOpen.value = false
+    settingsOpen.value = false
+  }
 }
 
 // Shift+drag rotate
@@ -474,7 +470,6 @@ onMounted(() => {
   <div class="map-3d-wrapper">
     <div ref="mapInner" class="map-3d-inner" :class="{ tilted: settings.view3D }">
       <div id="map"></div>
-      <!-- 3D Vehicle Overlay -->
       <ThreeVehicleOverlay
         :visible="use3DModel"
         :lat="vehicle3DPosition.lat"
@@ -493,6 +488,7 @@ onMounted(() => {
     @play="playAnimation"
     @stop="stopAnimation"
     @export="openExport"
+    @toggleVehicle="toggleVehiclePanel"
   />
 
   <RoutePanel
@@ -512,8 +508,10 @@ onMounted(() => {
     :vehicles="vehicles"
     :selVehicle="selVehicle"
     :activeCat="activeCat"
+    :visible="vehiclePanelOpen"
     @select="selectVehicle"
     @changeCat="activeCat = $event"
+    @close="vehiclePanelOpen = false"
   />
 
   <SettingsDrawer
