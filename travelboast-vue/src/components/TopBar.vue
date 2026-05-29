@@ -2,7 +2,7 @@
 const props = defineProps({
   isPlaying: Boolean
 })
-const emit = defineEmits(['menu', 'settings', 'play', 'stop', 'export', 'toggleVehicle'])
+const emit = defineEmits(['menu', 'settings', 'play', 'stop', 'export', 'toggleVehicle', 'fitBounds'])
 </script>
 
 <template>
@@ -10,6 +10,9 @@ const emit = defineEmits(['menu', 'settings', 'play', 'stop', 'export', 'toggleV
     <div class="topbar-section">
       <button class="tb-btn tb-btn-icon" @click="$emit('menu')" title="路线">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <button class="tb-btn tb-btn-icon" @click="$emit('fitBounds')" title="回到路线">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 10v6a2 2 0 0 1-2 2h-6"/><path d="M3 10v6a2 2 0 0 0 2 2h6"/><path d="M13 21l-3-3 3-3"/><path d="M3 10v6a2 2 0 0 0 2 2h6"/><path d="M11 3l3 3-3 3"/><path d="M21 10v6a2 2 0 0 1-2 2h-6"/></svg>
       </button>
       <button class="tb-btn tb-btn-icon" @click="$emit('settings')" title="设置">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>

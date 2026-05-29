@@ -270,7 +270,12 @@ function renderDistLabels() {
 function fitRoute() {
   if (points.length < 2 || pinMarkers.value.length === 0) return
   const group = new L.featureGroup(pinMarkers.value)
-  map.fitBounds(group.getBounds().pad(0.12))
+  map.fitBounds(group.getBounds().pad(0.15))
+}
+
+function fitBounds() {
+  fitRoute()
+  showToast('已定位到路线')
 }
 
 function initMap() {
@@ -489,6 +494,7 @@ onMounted(() => {
     @stop="stopAnimation"
     @export="openExport"
     @toggleVehicle="toggleVehiclePanel"
+    @fitBounds="fitBounds"
   />
 
   <RoutePanel
