@@ -141,6 +141,34 @@ onMounted(initCompass)
               <button class="speed-chip" :class="{ active: settings.speed === 4 }" @click="setOpt('speed', 4)">4×</button>
             </div>
           </div>
+
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>视频时长</span>
+              <span class="slider-value">{{ settings.videoDuration }} 秒</span>
+            </div>
+            <input type="range" min="5" max="60" :value="settings.videoDuration" step="1" class="custom-slider" @input="e => setOpt('videoDuration', parseFloat(e.target.value))">
+            <div class="slider-presets">
+              <button class="preset-btn" :class="{ active: settings.videoDuration === 10 }" @click="setOpt('videoDuration', 10)">10s</button>
+              <button class="preset-btn" :class="{ active: settings.videoDuration === 15 }" @click="setOpt('videoDuration', 15)">15s</button>
+              <button class="preset-btn" :class="{ active: settings.videoDuration === 30 }" @click="setOpt('videoDuration', 30)">30s</button>
+              <button class="preset-btn" :class="{ active: settings.videoDuration === 60 }" @click="setOpt('videoDuration', 60)">60s</button>
+            </div>
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>交通工具大小</span>
+              <span class="slider-value">{{ settings.vehicleScale.toFixed(2) }}</span>
+            </div>
+            <input type="range" min="0.3" max="1.5" :value="settings.vehicleScale" step="0.05" class="custom-slider" @input="e => setOpt('vehicleScale', parseFloat(e.target.value))">
+            <div class="slider-presets">
+              <button class="preset-btn" :class="{ active: settings.vehicleScale === 0.5 }" @click="setOpt('vehicleScale', 0.5)">小</button>
+              <button class="preset-btn" :class="{ active: settings.vehicleScale === 0.65 }" @click="setOpt('vehicleScale', 0.65)">中</button>
+              <button class="preset-btn" :class="{ active: settings.vehicleScale === 1 }" @click="setOpt('vehicleScale', 1)">大</button>
+              <button class="preset-btn" :class="{ active: settings.vehicleScale === 1.3 }" @click="setOpt('vehicleScale', 1.3)">超大</button>
+            </div>
+          </div>
         </div>
 
         <div class="section">

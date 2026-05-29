@@ -18,6 +18,26 @@
         <canvas ref="previewCanvas" :width="canvasWidth" :height="canvasHeight"></canvas>
       </div>
 
+      <div class="controls-section" v-if="mode === 'export'">
+        <div class="control-slider">
+          <div class="slider-label">
+            <span>视频时长</span>
+            <span class="slider-value">{{ settings.videoDuration }} 秒</span>
+          </div>
+          <input type="range" min="5" max="60" :value="settings.videoDuration" step="1" 
+                 class="custom-slider" @input="updateSettings('videoDuration', parseFloat($event.target.value))">
+        </div>
+
+        <div class="control-slider">
+          <div class="slider-label">
+            <span>交通工具大小</span>
+            <span class="slider-value">{{ settings.vehicleScale.toFixed(2) }}</span>
+          </div>
+          <input type="range" min="0.3" max="1.5" :value="settings.vehicleScale" step="0.05" 
+                 class="custom-slider" @input="updateSettings('vehicleScale', parseFloat($event.target.value))">
+        </div>
+      </div>
+
       <div v-if="isRecording" class="recording-progress">
         <div class="progress-bar">
           <div class="progress-fill" :style="{ width: progress + '%' }"></div>
@@ -331,10 +351,12 @@ function drawVehicle(ctx, W, H, bounds, t) {
   const vPos = getVehiclePosition(t)
   const vCanvas = getCanvasPoint(vPos, bounds, W, H)
   const vehicle = props.segments?.[0]?.vehicle || { icon: '🚗' }
+  const scale = props.settings?.vehicleScale || 0.65
 
   ctx.save()
   ctx.translate(vCanvas.x, vCanvas.y)
   ctx.rotate((vPos.angle - 90) * Math.PI / 180)
+  ctx.scale(scale, scale)
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
   ctx.beginPath()
@@ -365,9 +387,7 @@ async function startPreview() {
 
   isPlaying.value = true
   animStartTime = performance.now()
-  const totalDist = getTotalDistance()
-  const speed = props.settings?.speed || 2
-  animDuration = Math.max((totalDist * 28) / speed, 3000)
+  animDuration = (props.settings?.videoDuration || 15) * 1000
 
   animate()
 }
@@ -421,10 +441,7 @@ async function startRecording() {
     return
   }
 
-  const totalDist = getTotalDistance()
-  const speed = props.settings?.speed || 2
-  const duration = Math.max((totalDist * 28) / speed, 3000)
-
+  const duration = (props.settings?.videoDuration || 15) * 1000
   const preset = getPresetForRatio(props.settings?.ratio, 'standard')
 
   try {
@@ -474,6 +491,10 @@ async function startRecording() {
 
 function stopRecording() {
   isRecording.value = false
+}
+
+function updateSettings(key, value) {
+  emit('update:settings', { ...props.settings, [key]: value })
 }
 
 function close() {
@@ -630,6 +651,66 @@ canvas {
   max-width: 100%;
   max-height: 60vh;
   border-radius: 12px;
+}
+
+.controls-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.control-slider {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.control-slider .slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.control-slider .slider-label span:first-child {
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.control-slider .slider-label .slider-value {
+  color: #ff6b4a;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.control-slider .custom-slider {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #ff6b4a 0%, #ff6b4a var(--pct, 50%), rgba(255,255,255,0.1) var(--pct, 50%), rgba(255,255,255,0.1) 100%);
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.control-slider .custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid #ff6b4a;
+  box-shadow: 0 4px 12px rgba(255, 107, 74, 0.3);
+  margin-top: -10px;
+  cursor: grab;
+  transition: transform 0.15s ease;
+}
+
+.control-slider .custom-slider::-webkit-slider-thumb:active {
+  transform: scale(1.2);
+  cursor: grabbing;
 }
 
 .recording-progress {

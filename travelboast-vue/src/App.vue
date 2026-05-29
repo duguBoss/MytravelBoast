@@ -28,7 +28,8 @@ const settings = reactive({
   ratio: 'vertical', speed: 2, size: 'medium',
   mapStyle: 'voyager', showDistance: true,
   showFlags: false, use3D: true, showLabels: true,
-  view3D: false, tilt: 30, rotation: 0
+  view3D: false, tilt: 30, rotation: 0,
+  videoDuration: 15, vehicleScale: 0.65
 })
 
 // UI state
@@ -535,6 +536,7 @@ onMounted(() => {
     :settings="settings"
     @close="showPreview = false"
     @toast="showToast"
+    @update:settings="newSettings => Object.assign(settings, newSettings)"
   />
 
   <Toast :message="toastMsg" />
