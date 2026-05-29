@@ -1,13 +1,11 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="close">
     <div class="modal-content" :class="{ 'export-mode': mode === 'export' }">
-      <!-- Header -->
       <div class="modal-header">
         <h3>{{ mode === 'export' ? '导出视频' : '路线预览' }}</h3>
         <button class="close-btn" @click="close">✕</button>
       </div>
 
-      <!-- Controls -->
       <div class="modal-controls">
         <button class="control-btn play-btn" :disabled="isRecording || isPlaying" @click="startPreview">▶ 播放</button>
         <button class="control-btn stop-btn" :disabled="isRecording || !isPlaying" @click="stopPreview">⏹ 停止</button>
@@ -16,33 +14,28 @@
         </button>
       </div>
 
-      <!-- Preview Canvas -->
       <div class="preview-container">
         <canvas ref="previewCanvas" :width="canvasWidth" :height="canvasHeight"></canvas>
       </div>
 
-      <!-- Progress -->
       <div v-if="isRecording" class="recording-progress">
         <div class="progress-bar">
           <div class="progress-fill" :style="{ width: progress + '%' }"></div>
         </div>
-        <span>{{ progress.toFixed(0) }}% - 已录制 {{ recordedFrames.length }} 帧</span>
+        <span>{{ progress.toFixed(0) }}% - {{ frameInfo }}</span>
       </div>
 
-      <!-- Export Progress -->
       <div v-if="isExporting" class="export-progress">
         <div class="spinner"></div>
-        <span>正在生成视频...</span>
+        <span>{{ exportStatus }}</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import html2canvas from 'html2canvas'
-import { FFmpeg } from '@ffmpeg/ffmpeg'
-import { fetchFile, toBlobURL } from '@ffmpeg/util'
+import { ref, computed, watch, onUnmounted } from 'vue'
+import { recordVideo, saveVideoFile, generateFilename, getPresetForRatio } from '../utils/videoRecorder.js'
 
 const props = defineProps({
   show: Boolean,
@@ -54,49 +47,38 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'toast'])
 
-// Canvas
 const previewCanvas = ref(null)
 const canvasWidth = ref(800)
 const canvasHeight = ref(450)
 
-// State
 const isPlaying = ref(false)
 const isRecording = ref(false)
 const isExporting = ref(false)
 const progress = ref(0)
-const recordedFrames = ref([])
+const frameInfo = ref('')
+const exportStatus = ref('')
 
-// Animation
 let animFrame = null
 let animStartTime = 0
 let animDuration = 0
-let vehiclePos = { lat: 0, lng: 0 }
-let vehicleAngle = 0
 
-// Map background
-let bgImage = null
-
-// Recording
-let ffmpeg = null
-let recordingInterval = null
-
-// Constants
 const VEHICLE_SIZE = 40
 const PIN_SIZE = 40
 const ROUTE_WIDTH = 4
 
-// Setup canvas size based on ratio
 watch(() => props.settings?.ratio, (val) => {
   if (val === 'vertical') {
     canvasWidth.value = 450
     canvasHeight.value = 800
+  } else if (val === 'square') {
+    canvasWidth.value = 600
+    canvasHeight.value = 600
   } else {
     canvasWidth.value = 800
     canvasHeight.value = 450
   }
 }, { immediate: true })
 
-// Generate canvas-compatible points (convert lat/lng to canvas coordinates)
 function getCanvasPoint(point, bounds, width, height) {
   const margin = 60
   const x = margin + ((point.lng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * (width - margin * 2)
@@ -114,7 +96,6 @@ function getRouteBounds() {
     minLng = Math.min(minLng, p.lng)
     maxLng = Math.max(maxLng, p.lng)
   })
-  // Add padding
   const latPad = (maxLat - minLat) * 0.15 || 0.5
   const lngPad = (maxLng - minLng) * 0.15 || 0.5
   return {
@@ -128,7 +109,6 @@ function getRouteBounds() {
 function getVehiclePosition(t) {
   if (!props.points || props.points.length < 2) return { lat: 0, lng: 0, angle: 0 }
 
-  // Calculate total distance
   let totalDist = 0
   const dists = []
   for (let i = 0; i < props.points.length - 1; i++) {
@@ -188,57 +168,49 @@ function bearing(lat1, lng1, lat2, lng2) {
   return Math.atan2(y, x) * 180 / Math.PI
 }
 
-function captureBackground() {
-  return new Promise((resolve) => {
-    const mapEl = document.getElementById('map')
-    if (!mapEl) { resolve(null); return }
-
-    html2canvas(mapEl, {
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-    }).then(canvas => {
-      bgImage = canvas.toDataURL('image/png')
-      resolve(bgImage)
-    }).catch(() => {
-      resolve(null)
-    })
-  })
-}
-
-function drawFrame(t) {
-  const canvas = previewCanvas.value
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')
-  const W = canvas.width
-  const H = canvas.height
-
-  // Clear
+function drawFrame(ctx, W, H, t) {
   ctx.clearRect(0, 0, W, H)
 
-  // Draw background
-  if (bgImage) {
-    const img = new Image()
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, W, H)
-      drawOverlay(ctx, W, H, t)
-    }
-    img.src = bgImage
-  } else {
-    // Fallback: draw a simple background
-    ctx.fillStyle = '#1a1a2e'
-    ctx.fillRect(0, 0, W, H)
-    drawOverlay(ctx, W, H, t)
-  }
-}
+  const gradient = ctx.createLinearGradient(0, 0, W, H)
+  gradient.addColorStop(0, '#1a1a2e')
+  gradient.addColorStop(0.5, '#16213e')
+  gradient.addColorStop(1, '#0f3460')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, W, H)
 
-function drawOverlay(ctx, W, H, t) {
+  drawGrid(ctx, W, H)
+
   const bounds = getRouteBounds()
   if (!bounds || !props.points || props.points.length < 2) return
 
-  // Draw route line
+  drawRoute(ctx, W, H, bounds, t)
+  drawPins(ctx, W, H, bounds)
+  drawDistanceLabels(ctx, W, H, bounds)
+  drawVehicle(ctx, W, H, bounds, t)
+}
+
+function drawGrid(ctx, W, H) {
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'
+  ctx.lineWidth = 1
+  
+  const gridSize = 50
+  for (let x = 0; x <= W; x += gridSize) {
+    ctx.beginPath()
+    ctx.moveTo(x, 0)
+    ctx.lineTo(x, H)
+    ctx.stroke()
+  }
+  for (let y = 0; y <= H; y += gridSize) {
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(W, y)
+    ctx.stroke()
+  }
+}
+
+function drawRoute(ctx, W, H, bounds, t) {
   ctx.beginPath()
-  ctx.strokeStyle = '#ff6b4a'
+  ctx.strokeStyle = 'rgba(255, 107, 74, 0.4)'
   ctx.lineWidth = ROUTE_WIDTH
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -258,7 +230,6 @@ function drawOverlay(ctx, W, H, t) {
   ctx.stroke()
   ctx.setLineDash([])
 
-  // Draw animated route progress
   const totalDist = getTotalDistance()
   const targetDist = totalDist * t
   let accDist = 0
@@ -281,55 +252,57 @@ function drawOverlay(ctx, W, H, t) {
     }
   }
 
-  // Draw solid animated route
   if (drawnPoints.length > 1) {
     ctx.beginPath()
     ctx.strokeStyle = '#ff6b4a'
     ctx.lineWidth = ROUTE_WIDTH + 1
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
-    ctx.setLineDash([])
+    ctx.shadowColor = '#ff6b4a'
+    ctx.shadowBlur = 10
     ctx.moveTo(drawnPoints[0].x, drawnPoints[0].y)
     for (let i = 1; i < drawnPoints.length; i++) {
       ctx.lineTo(drawnPoints[i].x, drawnPoints[i].y)
     }
     ctx.stroke()
-    ctx.setLineDash([8, 4])
+    ctx.shadowBlur = 0
   }
+}
 
-  // Draw pins/markers
+function drawPins(ctx, W, H, bounds) {
   props.points.forEach((p, i) => {
     const cp = getCanvasPoint(p, bounds, W, H)
     const isStart = i === 0
     const isEnd = i === props.points.length - 1
 
-    // Pin body
     ctx.beginPath()
-    ctx.arc(cp.x, cp.y - 15, 12, 0, Math.PI * 2)
-    ctx.fillStyle = isStart ? '#4CAF50' : isEnd ? '#f44336' : '#ff9800'
+    ctx.arc(cp.x, cp.y - 15, 14, 0, Math.PI * 2)
+    const gradient = ctx.createRadialGradient(cp.x - 3, cp.y - 18, 0, cp.x, cp.y - 15, 14)
+    gradient.addColorStop(0, isStart ? '#66bb6a' : isEnd ? '#ef5350' : '#ffa726')
+    gradient.addColorStop(1, isStart ? '#2e7d32' : isEnd ? '#c62828' : '#ef6c00')
+    ctx.fillStyle = gradient
     ctx.fill()
     ctx.strokeStyle = '#fff'
-    ctx.lineWidth = 2
+    ctx.lineWidth = 3
     ctx.stroke()
 
-    // Pin label
     ctx.fillStyle = '#fff'
-    ctx.font = 'bold 12px sans-serif'
+    ctx.font = 'bold 14px sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     const label = isStart ? 'A' : isEnd ? 'B' : String(i)
     ctx.fillText(label, cp.x, cp.y - 15)
 
-    // City name
     if (props.settings?.showLabels) {
       ctx.fillStyle = '#fff'
-      ctx.font = '11px sans-serif'
+      ctx.font = '12px sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText(p.name, cp.x, cp.y + 5)
+      ctx.fillText(p.name, cp.x, cp.y + 8)
     }
   })
+}
 
-  // Draw distance labels
+function drawDistanceLabels(ctx, W, H, bounds) {
   if (props.settings?.showDistance && props.segments) {
     for (let i = 0; i < props.points.length - 1; i++) {
       const p1 = props.points[i]
@@ -339,20 +312,22 @@ function drawOverlay(ctx, W, H, t) {
       const cp = getCanvasPoint({ lat: midLat, lng: midLng }, bounds, W, H)
 
       const dist = props.segments[i]?.distance || 0
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
       ctx.beginPath()
-      ctx.roundRect(cp.x - 35, cp.y - 12, 70, 24, 12)
+      ctx.roundRect(cp.x - 40, cp.y - 14, 80, 28, 14)
       ctx.fill()
 
       ctx.fillStyle = '#fff'
-      ctx.font = 'bold 11px sans-serif'
+      ctx.font = 'bold 12px sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       ctx.fillText(`${dist.toFixed(0)} km`, cp.x, cp.y)
     }
   }
+}
 
-  // Draw vehicle
+function drawVehicle(ctx, W, H, bounds, t) {
   const vPos = getVehiclePosition(t)
   const vCanvas = getCanvasPoint(vPos, bounds, W, H)
   const vehicle = props.segments?.[0]?.vehicle || { icon: '🚗' }
@@ -361,14 +336,12 @@ function drawOverlay(ctx, W, H, t) {
   ctx.translate(vCanvas.x, vCanvas.y)
   ctx.rotate((vPos.angle - 90) * Math.PI / 180)
 
-  // Vehicle shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.3)'
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
   ctx.beginPath()
-  ctx.ellipse(2, 2, 18, 18, 0, 0, Math.PI * 2)
+  ctx.ellipse(4, 4, 20, 16, 0, 0, Math.PI * 2)
   ctx.fill()
 
-  // Vehicle icon
-  ctx.font = '32px sans-serif'
+  ctx.font = '36px sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(vehicle.icon, 0, 0)
@@ -390,9 +363,6 @@ function getTotalDistance() {
 async function startPreview() {
   if (isRecording.value || isPlaying.value) return
 
-  emit('toast', '正在截取地图背景...')
-  await captureBackground()
-
   isPlaying.value = true
   animStartTime = performance.now()
   const totalDist = getTotalDistance()
@@ -407,13 +377,10 @@ function animate() {
   const t = Math.min(elapsed / animDuration, 1)
   progress.value = t * 100
 
-  drawFrame(t)
-
-  if (isRecording.value) {
-    const canvas = previewCanvas.value
-    if (canvas) {
-      recordedFrames.value.push(canvas.toDataURL('image/png'))
-    }
+  const canvas = previewCanvas.value
+  if (canvas) {
+    const ctx = canvas.getContext('2d')
+    drawFrame(ctx, canvas.width, canvas.height, t)
   }
 
   if (t < 1) {
@@ -443,61 +410,70 @@ async function toggleRecording() {
 }
 
 async function startRecording() {
-  recordedFrames.value = []
   isRecording.value = true
   progress.value = 0
 
-  if (!isPlaying.value) {
-    await startPreview()
-  }
+  emit('toast', '正在录制...')
 
-  emit('toast', '录制中...')
-}
-
-async function stopRecording() {
-  isRecording.value = false
-  if (animFrame) {
-    cancelAnimationFrame(animFrame)
-    animFrame = null
-  }
-  isPlaying.value = false
-
-  if (recordedFrames.value.length === 0) {
-    emit('toast', '没有录到任何帧')
+  const canvas = previewCanvas.value
+  if (!canvas) {
+    emit('toast', '画布初始化失败')
     return
   }
 
-  emit('toast', `录制完成！共 ${recordedFrames.value.length} 帧，正在生成视频...`)
+  const totalDist = getTotalDistance()
+  const speed = props.settings?.speed || 2
+  const duration = Math.max((totalDist * 28) / speed, 3000)
 
-  // For now, just trigger a download of frames as a simple approach
-  // Full video encoding would require ffmpeg.wasm which has complex setup
-  await downloadFramesAsImages()
-}
+  const preset = getPresetForRatio(props.settings?.ratio, 'standard')
 
-async function downloadFramesAsImages() {
   try {
-    // Create a simple animated GIF-like sequence download
-    // In a production app, you'd use ffmpeg.wasm here
-    const canvas = previewCanvas.value
-    if (!canvas) return
+    isExporting.value = true
+    exportStatus.value = '正在录制视频...'
 
-    // Save as PNG sequence
-    const blob = await new Promise(resolve => {
-      canvas.toBlob(resolve, 'image/png')
+    const result = await recordVideo(canvas, drawFrame, {
+      duration,
+      fps: preset.fps,
+      bitrate: preset.bitrate,
+      onProgress: (pct, info) => {
+        progress.value = pct
+        frameInfo.value = `${info.frame}/${info.totalFrames} 帧`
+      }
     })
 
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'travelboast-route.png'
-    a.click()
-    URL.revokeObjectURL(url)
+    exportStatus.value = '正在保存视频...'
+    const filename = generateFilename({
+      ratio: props.settings?.ratio,
+      quality: 'standard',
+      points: props.points,
+      format: 'webm'
+    })
 
-    emit('toast', '视频已保存！')
+    const saveResult = await saveVideoFile(result.blob, {
+      suggestedName: filename,
+      format: 'webm'
+    })
+
+    if (saveResult.success) {
+      emit('toast', `视频已保存！${(result.size / 1024 / 1024).toFixed(2)} MB`)
+    } else if (saveResult.aborted) {
+      emit('toast', '已取消保存')
+    } else {
+      emit('toast', '保存失败: ' + (saveResult.error || '未知错误'))
+    }
   } catch (err) {
-    console.error('Export failed:', err)
-    emit('toast', '导出失败: ' + err.message)
+    console.error('Recording error:', err)
+    emit('toast', '录制失败: ' + err.message)
+  } finally {
+    isRecording.value = false
+    isPlaying.value = false
+    isExporting.value = false
+    exportStatus.value = ''
   }
+}
+
+function stopRecording() {
+  isRecording.value = false
 }
 
 function close() {
@@ -508,11 +484,11 @@ function close() {
   isPlaying.value = false
   isRecording.value = false
   isExporting.value = false
-  recordedFrames.value = []
+  progress.value = 0
+  frameInfo.value = ''
   emit('close')
 }
 
-// Clean up on unmount
 onUnmounted(() => {
   if (animFrame) cancelAnimationFrame(animFrame)
 })
@@ -522,25 +498,26 @@ onUnmounted(() => {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.8);
+  background: rgba(0,0,0,0.85);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
 }
 
 .modal-content {
   background: #161625;
-  border-radius: 16px;
+  border-radius: 20px;
   padding: 24px;
   width: 90vw;
-  max-width: 850px;
+  max-width: 900px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   gap: 16px;
   border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
 }
 
 .modal-header {
@@ -551,21 +528,29 @@ onUnmounted(() => {
 
 .modal-header h3 {
   color: #fff;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
+  font-weight: 600;
 }
 
 .close-btn {
-  background: none;
+  background: rgba(255,255,255,0.1);
   border: none;
   color: #fff;
   font-size: 1.4rem;
   cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.2s;
+  opacity: 0.7;
+  transition: all 0.2s;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .close-btn:hover {
   opacity: 1;
+  background: rgba(255,255,255,0.2);
 }
 
 .modal-controls {
@@ -575,22 +560,29 @@ onUnmounted(() => {
 }
 
 .control-btn {
-  padding: 10px 24px;
-  border-radius: 8px;
+  padding: 12px 28px;
+  border-radius: 12px;
   border: none;
-  font-size: 0.95rem;
+  font-size: 1rem;
   cursor: pointer;
   transition: all 0.2s;
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .play-btn {
-  background: #667eea;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
 }
 
 .play-btn:hover:not(:disabled) {
-  background: #5a6fd6;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
 }
 
 .stop-btn {
@@ -603,12 +595,17 @@ onUnmounted(() => {
 }
 
 .record-btn {
-  background: #ff3b30;
+  background: linear-gradient(135deg, #ff3b30 0%, #ff6b6b 100%);
   color: white;
+  box-shadow: 0 4px 15px rgba(255, 59, 48, 0.4);
+}
+
+.record-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 59, 48, 0.5);
 }
 
 .record-btn.active {
-  background: #ff6b6b;
   animation: pulse 1s infinite;
 }
 
@@ -618,16 +615,21 @@ onUnmounted(() => {
 }
 
 .preview-container {
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
   background: #0a0a1a;
   border: 1px solid rgba(255,255,255,0.1);
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 canvas {
   display: block;
-  width: 100%;
-  height: auto;
+  max-width: 100%;
+  max-height: 60vh;
+  border-radius: 12px;
 }
 
 .recording-progress {
@@ -635,19 +637,19 @@ canvas {
   flex-direction: column;
   gap: 8px;
   color: #fff;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
 
 .progress-bar {
-  height: 6px;
+  height: 8px;
   background: rgba(255,255,255,0.1);
-  border-radius: 3px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #667eea, #764ba2);
+  background: linear-gradient(90deg, #ff6b4a, #ff8f73);
   transition: width 0.1s linear;
 }
 
@@ -657,13 +659,14 @@ canvas {
   gap: 12px;
   justify-content: center;
   color: #fff;
+  padding: 12px;
 }
 
 .spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(255,255,255,0.2);
-  border-top-color: #667eea;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255,255,255,0.2);
+  border-top-color: #ff6b4a;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -679,8 +682,12 @@ canvas {
   }
   
   .control-btn {
-    padding: 8px 16px;
-    font-size: 0.85rem;
+    padding: 10px 20px;
+    font-size: 0.9rem;
+  }
+  
+  canvas {
+    max-height: 45vh;
   }
 }
 </style>
