@@ -10,7 +10,7 @@ const props = defineProps({
   heading: { type: Number, default: 0 },
   scale: { type: Number, default: 1 },
   mapInstance: Object,
-  modelUrl: { type: String, default: '/car.glb' }
+  modelUrl: { type: String, default: '/models/car.glb' }
 })
 
 const canvasContainer = ref(null)

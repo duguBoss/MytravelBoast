@@ -14,6 +14,7 @@ import ThreeVehicleOverlay from './components/ThreeVehicleOverlay.vue'
 import { vehicles } from './constants/vehicles.js'
 import { countryFlags, tileUrls, tileSubdomains, mapAttributions } from './constants/map.js'
 import { uid, haversine, bearing, getFlag } from './utils/helpers.js'
+import { generateMultiSegmentPath, getVehiclePositionOnPath, calculatePathDistance } from './utils/pathGenerator.js'
 
 // State
 const selVehicle = ref(vehicles[0])
@@ -56,10 +57,13 @@ const vehicle3DPosition = ref({ lat: 39.9042, lng: 116.4074 })
 const vehicle3DHeading = ref(0)
 const vehicle3DScale = ref(1)
 
+// Dense path points for realistic vehicle animation
+let routePathPoints = []
+let routeTotalDistance = 0
+
 // Computed
 const totalDistStr = computed(() => {
-  const total = segments.reduce((s, seg) => s + seg.distance, 0)
-  return total.toFixed(0) + ' km'
+  return routeTotalDistance.toFixed(0) + ' km'
 })
 
 // Toast helper
@@ -101,11 +105,14 @@ function syncSegments() {
 }
 
 function updateDistances() {
-  let total = 0
+  // Generate dense path points for realistic route following
+  routePathPoints = generateMultiSegmentPath(points, 100)
+  routeTotalDistance = calculatePathDistance(routePathPoints)
+
+  // Also update segment distances for display
   segments.forEach((s, i) => {
     const d = haversine(points[i].lat, points[i].lng, points[i+1].lat, points[i+1].lng)
     s.distance = d
-    total += d
   })
 }
 
@@ -133,7 +140,9 @@ function renderRoute() {
     m.on('dragend', (e) => {
       const ll = e.target.getLatLng()
       p.lat = ll.lat; p.lng = ll.lng
-      renderRouteLine(); updateDistances(); renderDistLabels()
+      updateDistances()
+      renderRouteLine()
+      renderDistLabels()
     })
     pinMarkers.value.push(m)
   })
@@ -147,7 +156,10 @@ function renderRoute() {
 
 function renderRouteLine() {
   if (routeLine) map.removeLayer(routeLine)
-  const latlngs = points.map(p => [p.lat, p.lng])
+  // Use dense path points for realistic route line rendering
+  const latlngs = routePathPoints.length > 0
+    ? routePathPoints.map(p => [p.lat, p.lng])
+    : points.map(p => [p.lat, p.lng])
   routeLine = L.polyline(latlngs, {
     color: '#ff6b4a', weight: 4, opacity: 0.85,
     lineCap: 'round', lineJoin: 'round'
@@ -187,6 +199,28 @@ function renderVehicle() {
 }
 
 function updateVehiclePosition(t) {
+  // Use dense path points for realistic vehicle movement
+  if (routePathPoints.length >= 2) {
+    const pos = getVehiclePositionOnPath(routePathPoints, t)
+
+    if (use3DModel.value) {
+      vehicle3DPosition.value = { lat: pos.lat, lng: pos.lng }
+      vehicle3DHeading.value = pos.heading
+    }
+
+    if (vehicleMarker) {
+      vehicleMarker.setLatLng([pos.lat, pos.lng])
+      const v = segments[0]?.vehicle || segments[0]?.vehicle
+      const vehicleIcon = L.divIcon({
+        html: `<div style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));transform:rotate(${pos.heading - 90}deg);">${v?.icon || '✈️'}</div>`,
+        className: '', iconSize: [40, 40], iconAnchor: [20, 20]
+      })
+      vehicleMarker.setIcon(vehicleIcon)
+    }
+    return
+  }
+
+  // Fallback: straight line interpolation if no path points
   const totalDist = segments.reduce((s, seg) => s + seg.distance, 0)
   const targetDist = totalDist * t
 
@@ -209,8 +243,6 @@ function updateVehiclePosition(t) {
   const p2 = points[segIdx + 1]
   const lat = p1.lat + (p2.lat - p1.lat) * segT
   const lng = p1.lng + (p2.lng - p1.lng) * segT
-
-  console.log('[updateVehicle] t:', t.toFixed(3), 'segIdx:', segIdx, 'segT:', segT.toFixed(3), 'lat:', lat.toFixed(4), 'lng:', lng.toFixed(4), 'vehicleMarker:', !!vehicleMarker)
 
   if (use3DModel.value) {
     const angle = bearing(p1.lat, p1.lng, p2.lat, p2.lng)
@@ -301,7 +333,6 @@ const isPlaying = ref(false)
 const playProgress = ref(0)
 
 function playAnimation() {
-  console.log('[playAnimation] called, points:', points.length)
   if (points.length < 2) {
     showToast('请至少设置起点和终点')
     return
@@ -309,21 +340,14 @@ function playAnimation() {
   if (isPlaying.value) return
 
   // Ensure vehicle marker exists
-  if (!vehicleMarker) {
+  if (!vehicleMarker && !use3DModel.value) {
     renderVehicle()
   }
 
   isPlaying.value = true
   playProgress.value = 0
 
-  const totalDist = segments.reduce((s, seg) => s + seg.distance, 0)
-  console.log('[playAnimation] totalDist:', totalDist, 'segments:', segments.length)
-  for (let i = 0; i < segments.length; i++) {
-    console.log('[playAnimation] segment', i, 'distance:', segments[i].distance)
-  }
-
-  const duration = Math.max((totalDist * 28) / (settings.speed || 2), 3000)
-  console.log('[playAnimation] duration:', duration)
+  const duration = Math.max((routeTotalDistance * 28) / (settings.speed || 2), 3000)
   const startTime = performance.now()
 
   function step(now) {
@@ -336,7 +360,6 @@ function playAnimation() {
       animRaf = requestAnimationFrame(step)
     } else {
       isPlaying.value = false
-      console.log('[playAnimation] finished')
     }
   }
 
