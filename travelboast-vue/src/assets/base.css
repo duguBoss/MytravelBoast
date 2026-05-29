@@ -183,18 +183,11 @@ html, body {
 
 /* Mobile */
 @media (max-width: 768px) {
-  .left-panel {
-    width: 260px !important;
-    top: 68px !important;
-    transform: translateX(-120%) !important;
-  }
-  .left-panel.open { transform: translateX(0) !important; }
-  .bottom-panel { max-width: 96vw !important; }
-  .settings-drawer {
+  .route-panel {
     width: calc(100vw - 32px) !important;
-    top: auto !important; bottom: 16px !important; right: 16px !important;
-    max-height: 70vh !important;
-    transform: translateY(20px) !important;
+    left: 16px !important;
+    top: 64px !important;
+    transform: translateX(calc(-100% - 16px)) !important;
   }
-  .settings-drawer.show { transform: translateY(0) !important; }
+  .route-panel.open { transform: translateX(0) !important; }
 }
