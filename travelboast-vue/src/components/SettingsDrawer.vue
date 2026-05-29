@@ -274,31 +274,34 @@ onMounted(initCompass)
 <style scoped>
 .settings-drawer {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 200;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-end;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0);
-  transition: background 0.3s ease;
+  background: transparent;
+  transition: background-color 0.3s ease;
 }
 
 .settings-drawer.show {
   pointer-events: auto;
-  background: rgba(0, 0, 0, 0.4);
+  background-color: rgba(0, 0, 0, 0.5);
 }
 
 .settings-panel {
   width: 100%;
   max-width: 380px;
   height: 100%;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(245, 247, 250, 0.98) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 249, 251, 0.99) 100%);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.12);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.15);
   transform: translateX(100%);
-  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
