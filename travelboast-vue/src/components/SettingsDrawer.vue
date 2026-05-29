@@ -95,13 +95,14 @@ onMounted(initCompass)
   <div class="settings-drawer" :class="{ show }" @click.self="$emit('close')">
     <div class="settings-panel">
       <div class="panel-header">
+        <button class="close-btn" @click="$emit('close')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="close-icon"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
         <div class="header-title">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="header-icon"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
           <span>设置</span>
         </div>
-        <button class="close-btn" @click="$emit('close')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="close-icon"><path d="M18 6L6 18M6 6l12 12"/></svg>
-        </button>
+        <div style="width:40px;"></div>
       </div>
       
       <div class="panel-content">
@@ -314,6 +315,7 @@ onMounted(initCompass)
   padding: 20px 24px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   background: rgba(255, 255, 255, 0.6);
+  position: relative;
 }
 
 .header-title {
@@ -323,6 +325,10 @@ onMounted(initCompass)
   font-size: 18px;
   font-weight: 700;
   color: #1a1d2b;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .header-icon {
@@ -342,6 +348,7 @@ onMounted(initCompass)
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
+  z-index: 1;
 }
 
 .close-btn:hover {
