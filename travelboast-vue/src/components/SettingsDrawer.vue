@@ -92,119 +92,179 @@ onMounted(initCompass)
 </script>
 
 <template>
-  <div class="settings-drawer glass" :class="{ show }">
-    <div class="panel-header">
-      <span>设置</span>
-      <button class="btn btn-icon" @click="$emit('close')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="drawer-body">
-      <div class="s-row">
-        <label class="s-label">视频比例</label>
-        <div class="s-pills">
-          <button class="pill" :class="{ active: settings.ratio === 'vertical' }" @click="setOpt('ratio', 'vertical')">9:16</button>
-          <button class="pill" :class="{ active: settings.ratio === 'horizontal' }" @click="setOpt('ratio', 'horizontal')">16:9</button>
-          <button class="pill" :class="{ active: settings.ratio === 'square' }" @click="setOpt('ratio', 'square')">1:1</button>
+  <div class="settings-drawer" :class="{ show }" @click.self="$emit('close')">
+    <div class="settings-panel">
+      <div class="panel-header">
+        <div class="header-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="header-icon"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          <span>设置</span>
         </div>
+        <button class="close-btn" @click="$emit('close')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="close-icon"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
       </div>
-      <div class="s-row">
-        <label class="s-label">播放速度</label>
-        <div class="s-pills">
-          <button class="pill" :class="{ active: settings.speed === 0.5 }" @click="setOpt('speed', 0.5)">0.5×</button>
-          <button class="pill" :class="{ active: settings.speed === 1 }" @click="setOpt('speed', 1)">1×</button>
-          <button class="pill" :class="{ active: settings.speed === 2 }" @click="setOpt('speed', 2)">2×</button>
-          <button class="pill" :class="{ active: settings.speed === 3 }" @click="setOpt('speed', 3)">3×</button>
-          <button class="pill" :class="{ active: settings.speed === 4 }" @click="setOpt('speed', 4)">4×</button>
-        </div>
-      </div>
-      <div class="s-row">
-        <label class="s-label">模型大小</label>
-        <div class="s-pills">
-          <button class="pill" :class="{ active: settings.size === 'small' }" @click="setOpt('size', 'small')">小</button>
-          <button class="pill" :class="{ active: settings.size === 'medium' }" @click="setOpt('size', 'medium')">中</button>
-          <button class="pill" :class="{ active: settings.size === 'large' }" @click="setOpt('size', 'large')">大</button>
-        </div>
-      </div>
-      <div class="s-row">
-        <label class="s-label">地图样式</label>
-        <div class="s-pills">
-          <button class="pill" :class="{ active: settings.mapStyle === 'voyager' }" @click="setOpt('mapStyle', 'voyager')">清新</button>
-          <button class="pill" :class="{ active: settings.mapStyle === 'dark' }" @click="setOpt('mapStyle', 'dark')">深色</button>
-          <button class="pill" :class="{ active: settings.mapStyle === 'satellite' }" @click="setOpt('mapStyle', 'satellite')">卫星</button>
-          <button class="pill" :class="{ active: settings.mapStyle === 'minimal' }" @click="setOpt('mapStyle', 'minimal')">极简</button>
-        </div>
-      </div>
-
-      <div class="s-toggle">
-        <span style="font-size:13px;font-weight:500;">显示距离</span>
-        <div class="toggle-track" :class="{ on: settings.showDistance }" @click="toggle('showDistance')"></div>
-      </div>
-      <div class="s-toggle">
-        <span style="font-size:13px;font-weight:500;">显示国旗</span>
-        <div class="toggle-track" :class="{ on: settings.showFlags }" @click="toggle('showFlags')"></div>
-      </div>
-      <div class="s-toggle">
-        <span style="font-size:13px;font-weight:500;">3D 交通工具</span>
-        <div class="toggle-track" :class="{ on: settings.use3D }" @click="toggle('use3D')"></div>
-      </div>
-      <div class="s-toggle">
-        <span style="font-size:13px;font-weight:500;">显示地名标签</span>
-        <div class="toggle-track" :class="{ on: settings.showLabels }" @click="toggle('showLabels')"></div>
-      </div>
-      <div class="s-toggle">
-        <span style="font-size:13px;font-weight:500;">3D 倾斜视角</span>
-        <div class="toggle-track" :class="{ on: settings.view3D }" @click="toggle('view3D')"></div>
-      </div>
-
-      <div v-show="settings.view3D" class="s-row">
-        <label class="s-label">倾斜角度</label>
-        <div class="angle-control">
-          <button class="angle-btn" @click="setTilt((settings.tilt || 55) - 10)">−10°</button>
-          <button class="angle-btn" @click="setTilt((settings.tilt || 55) - 1)">−1°</button>
-          <input type="number" class="angle-input" :value="settings.tilt" min="0" max="75" step="0.1" @change="e => setTilt(parseFloat(e.target.value) || 0)">
-          <span class="angle-unit">°</span>
-          <button class="angle-btn" @click="setTilt((settings.tilt || 55) + 1)">+1°</button>
-          <button class="angle-btn" @click="setTilt((settings.tilt || 55) + 10)">+10°</button>
-        </div>
-        <input type="range" min="0" max="75" :value="settings.tilt" step="0.1" class="angle-slider" @input="e => setTilt(parseFloat(e.target.value))">
-        <div class="angle-presets">
-          <button class="preset-chip" :class="{ active: settings.tilt === 30 }" @click="setTilt(30)">30°</button>
-          <button class="preset-chip" :class="{ active: settings.tilt === 45 }" @click="setTilt(45)">45°</button>
-          <button class="preset-chip" :class="{ active: settings.tilt === 55 }" @click="setTilt(55)">55°</button>
-          <button class="preset-chip" :class="{ active: settings.tilt === 60 }" @click="setTilt(60)">60°</button>
-          <button class="preset-chip" :class="{ active: settings.tilt === 75 }" @click="setTilt(75)">75°</button>
-        </div>
-
-        <label class="s-label" style="margin-top:14px;">旋转角度</label>
-        <div class="angle-control">
-          <button class="angle-btn" @click="setRotation((settings.rotation || 0) - 45)">−45°</button>
-          <button class="angle-btn" @click="setRotation((settings.rotation || 0) - 5)">−5°</button>
-          <input type="number" class="angle-input" :value="settings.rotation" min="-180" max="180" step="0.1" @change="e => setRotation(parseFloat(e.target.value) || 0)">
-          <span class="angle-unit">°</span>
-          <button class="angle-btn" @click="setRotation((settings.rotation || 0) + 5)">+5°</button>
-          <button class="angle-btn" @click="setRotation((settings.rotation || 0) + 45)">+45°</button>
-        </div>
-        <input type="range" min="-180" max="180" :value="settings.rotation" step="0.1" class="angle-slider" @input="e => setRotation(parseFloat(e.target.value))">
-        <div class="angle-presets">
-          <button class="preset-chip" :class="{ active: settings.rotation === 0 }" @click="setRotation(0)">北</button>
-          <button class="preset-chip" :class="{ active: settings.rotation === -90 }" @click="setRotation(-90)">东</button>
-          <button class="preset-chip" :class="{ active: settings.rotation === -180 }" @click="setRotation(-180)">南</button>
-          <button class="preset-chip" :class="{ active: settings.rotation === 90 }" @click="setRotation(90)">西</button>
-        </div>
-
-        <label class="s-label" style="margin-top:14px;">方向罗盘（拖拽圆点旋转）</label>
-        <div class="compass-wrap" ref="compassWrap">
-          <div class="compass-ring">
-            <span class="compass-n">N</span>
-            <span class="compass-e">E</span>
-            <span class="compass-s">S</span>
-            <span class="compass-w">W</span>
+      
+      <div class="panel-content">
+        <div class="section">
+          <div class="section-title">视频设置</div>
+          
+          <div class="setting-row">
+            <div class="setting-label">
+              <span class="label-text">视频比例</span>
+            </div>
+            <div class="option-group">
+              <button class="option-btn" :class="{ active: settings.ratio === 'vertical' }" @click="setOpt('ratio', 'vertical')">
+                <div class="option-preview vertical"></div>
+                <span>竖屏</span>
+              </button>
+              <button class="option-btn" :class="{ active: settings.ratio === 'horizontal' }" @click="setOpt('ratio', 'horizontal')">
+                <div class="option-preview horizontal"></div>
+                <span>横屏</span>
+              </button>
+              <button class="option-btn" :class="{ active: settings.ratio === 'square' }" @click="setOpt('ratio', 'square')">
+                <div class="option-preview square"></div>
+                <span>方形</span>
+              </button>
+            </div>
           </div>
-          <div class="compass-needle" ref="compassNeedle"></div>
-          <div class="compass-knob" ref="compassKnob"></div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span class="label-text">播放速度</span>
+            </div>
+            <div class="speed-slider">
+              <button class="speed-chip" :class="{ active: settings.speed === 0.5 }" @click="setOpt('speed', 0.5)">0.5×</button>
+              <button class="speed-chip" :class="{ active: settings.speed === 1 }" @click="setOpt('speed', 1)">1×</button>
+              <button class="speed-chip" :class="{ active: settings.speed === 2 }" @click="setOpt('speed', 2)">2×</button>
+              <button class="speed-chip" :class="{ active: settings.speed === 3 }" @click="setOpt('speed', 3)">3×</button>
+              <button class="speed-chip" :class="{ active: settings.speed === 4 }" @click="setOpt('speed', 4)">4×</button>
+            </div>
+          </div>
         </div>
-        <div class="compass-hint">拖拽圆点或按住 Shift + 拖拽地图旋转</div>
+
+        <div class="section">
+          <div class="section-title">地图样式</div>
+          
+          <div class="map-style-grid">
+            <button class="map-style-card" :class="{ active: settings.mapStyle === 'voyager' }" @click="setOpt('mapStyle', 'voyager')">
+              <div class="style-preview voyager"></div>
+              <span>清新</span>
+            </button>
+            <button class="map-style-card" :class="{ active: settings.mapStyle === 'dark' }" @click="setOpt('mapStyle', 'dark')">
+              <div class="style-preview dark"></div>
+              <span>深色</span>
+            </button>
+            <button class="map-style-card" :class="{ active: settings.mapStyle === 'satellite' }" @click="setOpt('mapStyle', 'satellite')">
+              <div class="style-preview satellite"></div>
+              <span>卫星</span>
+            </button>
+            <button class="map-style-card" :class="{ active: settings.mapStyle === 'minimal' }" @click="setOpt('mapStyle', 'minimal')">
+              <div class="style-preview minimal"></div>
+              <span>极简</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">显示选项</div>
+          
+          <div class="toggle-list">
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <span class="toggle-name">显示距离</span>
+                <span class="toggle-desc">显示各路段的距离</span>
+              </div>
+              <div class="toggle-switch" :class="{ on: settings.showDistance }" @click="toggle('showDistance')">
+                <div class="toggle-thumb"></div>
+              </div>
+            </div>
+            
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <span class="toggle-name">显示地名</span>
+                <span class="toggle-desc">显示途经点的名称标签</span>
+              </div>
+              <div class="toggle-switch" :class="{ on: settings.showLabels }" @click="toggle('showLabels')">
+                <div class="toggle-thumb"></div>
+              </div>
+            </div>
+            
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <span class="toggle-name">显示国旗</span>
+                <span class="toggle-desc">在途经点显示国家/地区旗帜</span>
+              </div>
+              <div class="toggle-switch" :class="{ on: settings.showFlags }" @click="toggle('showFlags')">
+                <div class="toggle-thumb"></div>
+              </div>
+            </div>
+
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <span class="toggle-name">3D 交通工具</span>
+                <span class="toggle-desc">使用 3D 模型渲染交通工具</span>
+              </div>
+              <div class="toggle-switch" :class="{ on: settings.use3D }" @click="toggle('use3D')">
+                <div class="toggle-thumb"></div>
+              </div>
+            </div>
+
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <span class="toggle-name">3D 倾斜视角</span>
+                <span class="toggle-desc">启用地图的 3D 倾斜效果</span>
+              </div>
+              <div class="toggle-switch" :class="{ on: settings.view3D }" @click="toggle('view3D')">
+                <div class="toggle-thumb"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="settings.view3D" class="section">
+          <div class="section-title">3D 视角设置</div>
+          
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>倾斜角度</span>
+              <span class="slider-value">{{ settings.tilt }}°</span>
+            </div>
+            <input type="range" min="0" max="75" :value="settings.tilt" step="0.5" class="custom-slider" @input="e => setTilt(parseFloat(e.target.value))">
+            <div class="slider-presets">
+              <button class="preset-btn" :class="{ active: settings.tilt === 30 }" @click="setTilt(30)">30°</button>
+              <button class="preset-btn" :class="{ active: settings.tilt === 45 }" @click="setTilt(45)">45°</button>
+              <button class="preset-btn" :class="{ active: settings.tilt === 55 }" @click="setTilt(55)">55°</button>
+            </div>
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>旋转角度</span>
+              <span class="slider-value">{{ settings.rotation }}°</span>
+            </div>
+            <input type="range" min="-180" max="180" :value="settings.rotation" step="1" class="custom-slider" @input="e => setRotation(parseFloat(e.target.value))">
+            <div class="slider-presets">
+              <button class="preset-btn" :class="{ active: settings.rotation === 0 }" @click="setRotation(0)">北</button>
+              <button class="preset-btn" :class="{ active: settings.rotation === -90 }" @click="setRotation(-90)">东</button>
+              <button class="preset-btn" :class="{ active: settings.rotation === -180 || settings.rotation === 180 }" @click="setRotation(180)">南</button>
+              <button class="preset-btn" :class="{ active: settings.rotation === 90 }" @click="setRotation(90)">西</button>
+            </div>
+          </div>
+
+          <div class="compass-section">
+            <div class="compass-label">方向罗盘（拖拽圆点旋转）</div>
+            <div class="compass-wrap" ref="compassWrap">
+              <div class="compass-ring">
+                <span class="compass-n">N</span>
+                <span class="compass-e">E</span>
+                <span class="compass-s">S</span>
+                <span class="compass-w">W</span>
+              </div>
+              <div class="compass-needle" ref="compassNeedle"></div>
+              <div class="compass-knob" ref="compassKnob"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -213,243 +273,574 @@ onMounted(initCompass)
 <style scoped>
 .settings-drawer {
   position: fixed;
-  top: 16px; right: 16px;
-  width: 300px; max-height: calc(100vh - 32px);
-  border-radius: var(--radius-lg);
+  inset: 0;
   z-index: 200;
-  display: none; flex-direction: column;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateX(20px);
-  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.settings-drawer.show {
   display: flex;
-  opacity: 1;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0);
+  transition: background 0.3s ease;
+}
+
+.settings-drawer.show {
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.settings-panel {
+  width: 100%;
+  max-width: 380px;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(245, 247, 250, 0.98) 100%);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.12);
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-drawer.show .settings-panel {
   transform: translateX(0);
 }
-.drawer-body {
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1d2b;
+}
+
+.header-icon {
+  width: 22px;
+  height: 22px;
+  color: #ff6b4a;
+}
+
+.close-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background: rgba(255, 107, 74, 0.1);
+  transform: scale(1.05);
+}
+
+.close-btn:active {
+  transform: scale(0.95);
+}
+
+.close-icon {
+  width: 20px;
+  height: 20px;
+  color: #666;
+  transition: color 0.2s;
+}
+
+.close-btn:hover .close-icon {
+  color: #ff6b4a;
+}
+
+.panel-content {
   flex: 1;
   overflow-y: auto;
-  padding: 0 16px 16px;
-  scrollbar-width: thin;
+  padding: 24px;
 }
-.drawer-body::-webkit-scrollbar { width: 4px; }
-.drawer-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-.s-row { margin-bottom: 16px; }
-.s-label {
-  display: block;
-  font-weight: 600; font-size: 11px;
-  color: var(--muted);
-  margin-bottom: 8px;
+
+.panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.section {
+  margin-bottom: 32px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #8a8f9e;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  margin-bottom: 16px;
 }
-.s-pills {
-  display: flex; gap: 6px; flex-wrap: wrap;
+
+.setting-row {
+  margin-bottom: 20px;
 }
-.pill {
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg);
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 500;
+
+.setting-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.label-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1d2b;
+}
+
+.option-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.option-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px;
+  border-radius: 16px;
+  border: 2px solid transparent;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
 }
-.pill:hover { border-color: var(--muted); }
-.pill.active {
-  border-color: var(--accent);
-  background: var(--accent-light);
-  color: var(--accent);
+
+.option-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
-.s-toggle {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 0;
+
+.option-btn.active {
+  border-color: #ff6b4a;
+  background: linear-gradient(135deg, #fff5f2 0%, #fff 100%);
+  box-shadow: 0 4px 14px rgba(255, 107, 74, 0.15);
 }
-.toggle-track {
-  width: 44px; height: 24px;
+
+.option-preview {
+  width: 36px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #ff6b4a 0%, #ff8f73 100%);
+  box-shadow: 0 2px 6px rgba(255, 107, 74, 0.2);
+}
+
+.option-preview.vertical {
+  height: 64px;
+}
+
+.option-preview.horizontal {
+  height: 22px;
+  width: 48px;
+}
+
+.option-preview.square {
+  width: 36px;
+  height: 36px;
+}
+
+.option-btn span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+}
+
+.option-btn.active span {
+  color: #ff6b4a;
+}
+
+.speed-slider {
+  display: flex;
+  gap: 8px;
+}
+
+.speed-chip {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 14px;
+  border: 2px solid #e5e7eb;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.speed-chip:hover {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+
+.speed-chip.active {
+  border-color: #ff6b4a;
+  background: linear-gradient(135deg, #ff6b4a 0%, #ff8f73 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(255, 107, 74, 0.25);
+}
+
+.map-style-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.map-style-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 8px;
+  border-radius: 16px;
+  border: 2px solid transparent;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.map-style-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.map-style-card.active {
+  border-color: #ff6b4a;
+  background: linear-gradient(135deg, #fff5f2 0%, #fff 100%);
+}
+
+.style-preview {
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
-  background: var(--border);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.style-preview.voyager {
+  background: linear-gradient(135deg, #e8f4f8 0%, #d4edda 50%, #fff3cd 100%);
+}
+
+.style-preview.dark {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+}
+
+.style-preview.satellite {
+  background: linear-gradient(135deg, #86efac 0%, #2dd4bf 30%, #38bdf8 70%, #a78bfa 100%);
+}
+
+.style-preview.minimal {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+.map-style-card span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+}
+
+.map-style-card.active span {
+  color: #ff6b4a;
+}
+
+.toggle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toggle-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #fff;
+  transition: background 0.2s ease;
+}
+
+.toggle-item:hover {
+  background: #f8fafc;
+}
+
+.toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.toggle-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1d2b;
+}
+
+.toggle-desc {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.toggle-switch {
+  width: 52px;
+  height: 28px;
+  border-radius: 14px;
+  background: #e5e7eb;
   position: relative;
   cursor: pointer;
-  transition: background 0.2s;
-  flex-shrink: 0;
+  transition: all 0.25s ease;
 }
-.toggle-track::after {
-  content: '';
+
+.toggle-switch.on {
+  background: linear-gradient(135deg, #ff6b4a 0%, #ff8f73 100%);
+  box-shadow: 0 4px 12px rgba(255, 107, 74, 0.25);
+}
+
+.toggle-thumb {
   position: absolute;
-  top: 2px; left: 2px;
-  width: 20px; height: 20px;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.2s;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: transform 0.25s ease;
 }
-.toggle-track.on { background: var(--accent); }
-.toggle-track.on::after { transform: translateX(20px); }
 
-.angle-control {
-  display: flex; align-items: center; gap: 4px;
-  margin-bottom: 8px;
+.toggle-switch.on .toggle-thumb {
+  transform: translateX(24px);
 }
-.angle-btn {
-  height: 28px; padding: 0 7px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--muted);
-  font-family: var(--font-body);
-  font-size: 10px; font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-  flex-shrink: 0;
+
+.slider-group {
+  margin-bottom: 24px;
 }
-.angle-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-light);
+
+.slider-group:last-child {
+  margin-bottom: 16px;
 }
-.angle-input {
-  width: 52px; height: 28px;
-  border-radius: var(--radius-sm);
-  border: 1.5px solid var(--border);
-  background: var(--surface-solid);
-  color: var(--fg);
-  font-family: var(--font-body);
-  font-size: 13px; font-weight: 600;
-  text-align: center;
-  outline: none;
-  transition: border-color 0.15s;
-  -moz-appearance: textfield;
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
-.angle-input::-webkit-outer-spin-button,
-.angle-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.angle-input:focus { border-color: var(--accent); }
-.angle-unit {
-  font-size: 12px; font-weight: 600;
-  color: var(--muted);
-  margin-left: -2px;
+
+.slider-label span {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1d2b;
 }
-.angle-slider {
+
+.slider-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ff6b4a;
+}
+
+.custom-slider {
   width: 100%;
-  height: 6px;
-  accent-color: var(--accent);
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #ff6b4a 0%, #ff6b4a var(--pct, 50%), #e5e7eb var(--pct, 50%), #e5e7eb 100%);
+  -webkit-appearance: none;
+  appearance: none;
   cursor: pointer;
-  margin: 4px 0 8px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
+  margin-bottom: 12px;
 }
-.angle-slider::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 3px;
-  background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--pct, 50%), var(--border) var(--pct, 50%), var(--border) 100%);
-}
-.angle-slider::-webkit-slider-thumb {
+
+.custom-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  appearance: none;
-  width: 18px; height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-  margin-top: -6px;
+  background: #fff;
+  border: 3px solid #ff6b4a;
+  box-shadow: 0 4px 12px rgba(255, 107, 74, 0.25);
+  margin-top: -8px;
   cursor: grab;
-  transition: transform 0.1s;
+  transition: transform 0.15s ease;
 }
-.angle-slider::-webkit-slider-thumb:active {
+
+.custom-slider::-webkit-slider-thumb:active {
   transform: scale(1.25);
   cursor: grabbing;
 }
-.angle-presets {
-  display: flex; gap: 5px; flex-wrap: wrap;
+
+.slider-presets {
+  display: flex;
+  gap: 8px;
 }
-.preset-chip {
-  padding: 3px 9px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--muted);
-  font-family: var(--font-body);
-  font-size: 11px; font-weight: 600;
+
+.preset-btn {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: 10px;
+  border: none;
+  background: #f1f5f9;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
 }
-.preset-chip:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+
+.preset-btn:hover {
+  background: #e2e8f0;
+  color: #475569;
 }
-.preset-chip.active {
-  border-color: var(--accent);
-  background: var(--accent-light);
-  color: var(--accent);
+
+.preset-btn.active {
+  background: linear-gradient(135deg, #ff6b4a 0%, #ff8f73 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(255, 107, 74, 0.2);
+}
+
+.compass-section {
+  margin-top: 8px;
+}
+
+.compass-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 12px;
 }
 
 .compass-wrap {
-  width: 110px; height: 110px;
-  margin: 6px auto 4px;
+  width: 140px;
+  height: 140px;
+  margin: 0 auto;
   position: relative;
   border-radius: 50%;
   background: conic-gradient(from 0deg, rgba(255,107,74,0.06) 0deg, transparent 90deg, rgba(255,107,74,0.06) 180deg, transparent 270deg, rgba(255,107,74,0.06) 360deg);
-  border: 1.5px solid var(--border);
+  border: 2px solid #e5e7eb;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
 }
-.compass-wrap:active { cursor: grabbing; }
+
+.compass-wrap:active {
+  cursor: grabbing;
+}
+
 .compass-ring {
-  position: absolute; inset: 0;
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
 }
+
 .compass-ring span {
   position: absolute;
-  font-size: 9px; font-weight: 700;
-  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  color: #94a3b8;
 }
-.compass-n { top: 5px; left: 50%; transform: translateX(-50%); color: var(--accent) !important; }
-.compass-e { top: 50%; right: 5px; transform: translateY(-50%); }
-.compass-s { bottom: 5px; left: 50%; transform: translateX(-50%); }
-.compass-w { top: 50%; left: 5px; transform: translateY(-50%); }
+
+.compass-n {
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ff6b4a !important;
+  font-size: 13px !important;
+}
+
+.compass-e {
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+}
+
+.compass-s {
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compass-w {
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+}
+
 .compass-needle {
   position: absolute;
-  top: 50%; left: 50%;
-  width: 2px; height: 40%;
-  background: var(--accent);
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 45%;
+  background: linear-gradient(to bottom, #ff6b4a 0%, #ff8f73 100%);
   transform-origin: bottom center;
   transform: translate(-50%, -100%);
-  border-radius: 1px;
+  border-radius: 2px;
   pointer-events: none;
   transition: transform 0.15s linear;
+  box-shadow: 0 2px 8px rgba(255, 107, 74, 0.3);
 }
+
 .compass-needle::after {
   content: '';
   position: absolute;
-  top: -4px; left: 50%;
+  top: -6px;
+  left: 50%;
   transform: translateX(-50%);
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-bottom: 6px solid var(--accent);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid #ff6b4a;
 }
+
 .compass-knob {
   position: absolute;
-  top: 12%; left: 50%;
-  width: 14px; height: 14px;
-  background: var(--accent);
+  top: 10%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(135deg, #ff6b4a 0%, #ff8f73 100%);
   border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  border: 3px solid #fff;
+  box-shadow: 0 4px 12px rgba(255, 107, 74, 0.4);
   transform: translate(-50%, -50%);
   cursor: grab;
-  transition: transform 0.15s linear, top 0.15s linear, left 0.15s linear;
+  transition: transform 0.15s linear, top 0.15s linear, left 0.15s linear, box-shadow 0.15s;
   pointer-events: auto;
 }
-.compass-knob:active { cursor: grabbing; transform: translate(-50%, -50%) scale(1.2); }
-.compass-hint {
-  text-align: center;
-  font-size: 10px; color: var(--muted);
-  margin-top: 6px;
+
+.compass-knob:active {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.25);
+  box-shadow: 0 6px 16px rgba(255, 107, 74, 0.5);
+}
+
+@media (max-width: 640px) {
+  .settings-panel {
+    max-width: 100%;
+    border-radius: 0;
+  }
 }
 </style>
