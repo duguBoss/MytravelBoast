@@ -105,16 +105,17 @@ const filteredVehicles = computed(() => {
 }
 
 .vehicle-drawer-header h3 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: #1a1d2b;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.2;
 }
 
 .drawer-close {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: none;
   background: rgba(0, 0, 0, 0.06);
@@ -123,11 +124,12 @@ const filteredVehicles = computed(() => {
   place-items: center;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  flex-shrink: 0;
 }
 
 .drawer-close svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 
 .drawer-close:hover {
@@ -137,11 +139,12 @@ const filteredVehicles = computed(() => {
 
 .vehicle-categories {
   display: flex;
-  gap: 6px;
-  padding: 12px 20px;
+  gap: 8px;
+  padding: 12px 16px;
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  flex-shrink: 0;
 }
 
 .vehicle-categories::-webkit-scrollbar {
@@ -150,12 +153,12 @@ const filteredVehicles = computed(() => {
 
 .cat-btn {
   flex-shrink: 0;
-  padding: 6px 14px;
-  border-radius: 20px;
+  padding: 8px 20px;
+  border-radius: 24px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   background: rgba(0, 0, 0, 0.03);
   color: #6b7089;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
@@ -295,26 +298,44 @@ const filteredVehicles = computed(() => {
 
 @media (max-width: 768px) {
   .vehicle-drawer {
-    max-height: 70vh;
+    max-height: 75vh;
     border-radius: 20px 20px 0 0;
   }
   
+  .vehicle-drawer-header {
+    padding: 16px 16px 12px;
+  }
+  
+  .vehicle-drawer-header h3 {
+    font-size: 20px;
+  }
+  
+  .vehicle-categories {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  
+  .cat-btn {
+    padding: 10px 24px;
+    font-size: 18px;
+  }
+  
   .vehicle-grid {
-    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
     padding: 8px 16px 16px;
   }
   
   .vehicle-card {
-    padding: 10px 6px;
+    padding: 12px 8px;
   }
   
   .vehicle-card-icon {
-    font-size: 24px;
+    font-size: 32px;
   }
   
   .vehicle-card-name {
-    font-size: 10px;
+    font-size: 13px;
   }
 }
 </style>
