@@ -54,7 +54,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import html2canvas from 'html2canvas'
 import { recordVideo, saveVideoFile, generateFilename, getPresetForRatio } from '../utils/videoRecorder.js'
 
@@ -80,15 +80,15 @@ const progress = ref(0)
 const frameInfo = ref('')
 const exportStatus = ref('')
 const mapBackground = ref(null)
-const mapBounds = ref(null) // 保存地图的实际 bounds
-const mapSize = ref({ width: 0, height: 0 }) // 保存地图的实际尺寸
 
 let animFrame = null
 let animStartTime = 0
 let animDuration = 0
 
-const VEHICLE_SIZE = 40
-const PIN_SIZE = 40
+let smoothCamX = 0
+let smoothCamY = 0
+let smoothCamZoom = 1
+
 const ROUTE_WIDTH = 4
 
 watch(() => props.settings?.ratio, (val) => {
@@ -110,63 +110,14 @@ watch(() => props.show, (val) => {
   }
 })
 
-function getCanvasPoint(point, bounds, width, height) {
-  if (!bounds) return { x: width / 2, y: height / 2 }
-  
-  // 如果我们有地图的实际 bounds，使用正确的投影转换
-  if (mapBounds.value && props.mapInstance) {
-    // 使用 Leaflet 的 latLngToContainerPoint，但需要根据画布尺寸调整
-    const map = props.mapInstance
-    const mapSize = map.getSize()
-    const pointOnMap = map.latLngToContainerPoint([point.lat, point.lng])
-    
-    // 计算缩放比例
-    const scaleX = width / mapSize.x
-    const scaleY = height / mapSize.y
-    
-    return {
-      x: pointOnMap.x * scaleX,
-      y: pointOnMap.y * scaleY
-    }
-  }
-  
-  // 回退到原来的简单计算
-  const margin = 60
-  const x = margin + ((point.lng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * (width - margin * 2)
-  const y = margin + ((bounds.maxLat - point.lat) / (bounds.maxLat - bounds.minLat)) * (height - margin * 2)
-  return { x, y }
-}
-
-function getRouteBounds() {
-  if (!props.points || props.points.length === 0) return null
-  
-  // 如果有地图实例，直接使用地图的实际 bounds
-  if (props.mapInstance) {
-    const b = props.mapInstance.getBounds()
-    return {
-      minLat: b.getSouth(),
-      maxLat: b.getNorth(),
-      minLng: b.getWest(),
-      maxLng: b.getEast()
-    }
-  }
-  
-  // 回退到原来的计算
-  let minLat = Infinity, maxLat = -Infinity
-  let minLng = Infinity, maxLng = -Infinity
-  props.points.forEach(p => {
-    minLat = Math.min(minLat, p.lat)
-    maxLat = Math.max(maxLat, p.lat)
-    minLng = Math.min(minLng, p.lng)
-    maxLng = Math.max(maxLng, p.lng)
-  })
-  const latPad = (maxLat - minLat) * 0.15 || 0.5
-  const lngPad = (maxLng - minLng) * 0.15 || 0.5
+function latLngToCanvas(lat, lng, W, H) {
+  if (!props.mapInstance) return { x: W / 2, y: H / 2 }
+  const map = props.mapInstance
+  const mSize = map.getSize()
+  const pt = map.latLngToContainerPoint([lat, lng])
   return {
-    minLat: minLat - latPad,
-    maxLat: maxLat + latPad,
-    minLng: minLng - lngPad,
-    maxLng: maxLng + lngPad,
+    x: pt.x * (W / mSize.x),
+    y: pt.y * (H / mSize.y)
   }
 }
 
@@ -232,35 +183,104 @@ function bearing(lat1, lng1, lat2, lng2) {
   return Math.atan2(y, x) * 180 / Math.PI
 }
 
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3)
+}
+
+function easeInOutQuad(t) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+}
+
+function getCameraState(t, W, H) {
+  if (!props.points || props.points.length < 2) {
+    return { x: W / 2, y: H / 2, zoom: 1 }
+  }
+
+  const startPos = props.points[0]
+  const endPos = props.points[props.points.length - 1]
+  const startCanvas = latLngToCanvas(startPos.lat, startPos.lng, W, H)
+  const endCanvas = latLngToCanvas(endPos.lat, endPos.lng, W, H)
+
+  const vPos = getVehiclePosition(t)
+  const vCanvas = latLngToCanvas(vPos.lat, vPos.lng, W, H)
+
+  const routeCenterX = (startCanvas.x + endCanvas.x) / 2
+  const routeCenterY = (startCanvas.y + endCanvas.y) / 2
+
+  let camX, camY, zoom
+
+  if (t < 0.08) {
+    const phase = easeOutCubic(t / 0.08)
+    camX = startCanvas.x
+    camY = startCanvas.y
+    zoom = 2.8 - phase * 0.6
+  } else if (t < 0.2) {
+    const phase = easeInOutCubic((t - 0.08) / 0.12)
+    camX = startCanvas.x + (vCanvas.x - startCanvas.x) * phase
+    camY = startCanvas.y + (vCanvas.y - startCanvas.y) * phase
+    zoom = 2.2 - phase * 0.6
+  } else if (t < 0.8) {
+    const phase = (t - 0.2) / 0.6
+    const lookAhead = Math.min(t + 0.05, 1)
+    const aheadPos = getVehiclePosition(lookAhead)
+    const aheadCanvas = latLngToCanvas(aheadPos.lat, aheadPos.lng, W, H)
+
+    const targetX = vCanvas.x * 0.6 + aheadCanvas.x * 0.4
+    const targetY = vCanvas.y * 0.6 + aheadCanvas.y * 0.4
+
+    camX = targetX
+    camY = targetY
+
+    const distFromCenter = Math.sqrt(
+      Math.pow(vCanvas.x - routeCenterX, 2) +
+      Math.pow(vCanvas.y - routeCenterY, 2)
+    )
+    const maxDist = Math.sqrt(W * W + H * H) / 3
+    const distRatio = Math.min(distFromCenter / maxDist, 1)
+    zoom = 1.6 - distRatio * 0.3
+  } else if (t < 0.92) {
+    const phase = easeInOutCubic((t - 0.8) / 0.12)
+    camX = vCanvas.x + (endCanvas.x - vCanvas.x) * phase
+    camY = vCanvas.y + (endCanvas.y - vCanvas.y) * phase
+    zoom = 1.3 + phase * 0.9
+  } else {
+    const phase = easeInOutCubic((t - 0.92) / 0.08)
+    camX = endCanvas.x
+    camY = endCanvas.y
+    zoom = 2.2 + phase * 0.6
+  }
+
+  return { x: camX, y: camY, zoom }
+}
+
 async function loadMapBackground() {
   try {
     const mapEl = document.getElementById('map')
     if (!mapEl) return
 
     emit('toast', '正在加载地图背景...')
-    
-    // 获取地图实际 bounds 和尺寸
-    if (props.mapInstance) {
-      const b = props.mapInstance.getBounds()
-      mapBounds.value = {
-        minLat: b.getSouth(),
-        maxLat: b.getNorth(),
-        minLng: b.getWest(),
-        maxLng: b.getEast()
-      }
-      const size = props.mapInstance.getSize()
-      mapSize.value = { width: size.x, height: size.y }
-    }
-    
+
     const canvas = await html2canvas(mapEl, {
       useCORS: true,
       allowTaint: true,
       logging: false,
       backgroundColor: null,
-      scale: 1,
+      scale: 2,
     })
-    
+
     mapBackground.value = canvas
+
+    const W = canvasWidth.value
+    const H = canvasHeight.value
+    const startCam = getCameraState(0, W, H)
+    smoothCamX = startCam.x
+    smoothCamY = startCam.y
+    smoothCamZoom = startCam.zoom
+
     emit('toast', '地图加载完成')
   } catch (err) {
     console.error('加载地图失败:', err)
@@ -272,30 +292,24 @@ async function loadMapBackground() {
 function drawFrame(ctx, W, H, t) {
   ctx.clearRect(0, 0, W, H)
 
+  const targetCam = getCameraState(t, W, H)
+
+  const smoothFactor = 0.12
+  smoothCamX += (targetCam.x - smoothCamX) * smoothFactor
+  smoothCamY += (targetCam.y - smoothCamY) * smoothFactor
+  smoothCamZoom += (targetCam.zoom - smoothCamZoom) * smoothFactor
+
+  const camX = smoothCamX
+  const camY = smoothCamY
+  const zoom = smoothCamZoom
+
+  ctx.save()
+
+  ctx.translate(W / 2, H / 2)
+  ctx.scale(zoom, zoom)
+  ctx.translate(-camX, -camY)
+
   if (mapBackground.value) {
-    // 正确保持比例绘制地图背景
-    const bgW = mapBackground.value.width
-    const bgH = mapBackground.value.height
-    const bgAspect = bgW / bgH
-    const canvasAspect = W / H
-    
-    let drawW, drawH, offsetX, offsetY
-    
-    if (canvasAspect > bgAspect) {
-      // 画布更宽，按高度匹配
-      drawH = H
-      drawW = H * bgAspect
-      offsetX = (W - drawW) / 2
-      offsetY = 0
-    } else {
-      // 画布更高，按宽度匹配
-      drawW = W
-      drawH = W / bgAspect
-      offsetX = 0
-      offsetY = (H - drawH) / 2
-    }
-    
-    // 我们不裁剪，直接拉伸填满画布，因为坐标转换是基于整个画布的
     ctx.drawImage(mapBackground.value, 0, 0, W, H)
   } else {
     const gradient = ctx.createLinearGradient(0, 0, W, H)
@@ -306,33 +320,47 @@ function drawFrame(ctx, W, H, t) {
     ctx.fillRect(0, 0, W, H)
   }
 
-  const bounds = getRouteBounds()
-  if (!bounds || !props.points || props.points.length < 2) return
+  if (props.points && props.points.length >= 2) {
+    drawRoute(ctx, W, H, t)
+    drawPins(ctx, W, H)
+    drawDistanceLabels(ctx, W, H)
+    drawVehicle(ctx, W, H, t)
+  }
 
-  drawRoute(ctx, W, H, bounds, t)
-  drawPins(ctx, W, H, bounds)
-  drawDistanceLabels(ctx, W, H, bounds)
-  drawVehicle(ctx, W, H, bounds, t)
+  ctx.restore()
+
+  drawVignette(ctx, W, H, zoom)
 }
 
-function drawRoute(ctx, W, H, bounds, t) {
+function drawVignette(ctx, W, H, zoom) {
+  const intensity = Math.min((zoom - 1) * 0.15, 0.35)
+  if (intensity <= 0) return
+
+  const gradient = ctx.createRadialGradient(
+    W / 2, H / 2, Math.min(W, H) * 0.3,
+    W / 2, H / 2, Math.max(W, H) * 0.7
+  )
+  gradient.addColorStop(0, 'rgba(0,0,0,0)')
+  gradient.addColorStop(1, `rgba(0,0,0,${intensity})`)
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, W, H)
+}
+
+function drawRoute(ctx, W, H, t) {
+  const routePoints = []
+  for (let i = 0; i < props.points.length; i++) {
+    routePoints.push(latLngToCanvas(props.points[i].lat, props.points[i].lng, W, H))
+  }
+
   ctx.beginPath()
-  ctx.strokeStyle = 'rgba(255, 107, 74, 0.4)'
+  ctx.strokeStyle = 'rgba(255, 107, 74, 0.3)'
   ctx.lineWidth = ROUTE_WIDTH
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.setLineDash([8, 4])
-
-  const routePoints = []
-  for (let i = 0; i < props.points.length; i++) {
-    const p = props.points[i]
-    const cp = getCanvasPoint(p, bounds, W, H)
-    routePoints.push(cp)
-    if (i === 0) {
-      ctx.moveTo(cp.x, cp.y)
-    } else {
-      ctx.lineTo(cp.x, cp.y)
-    }
+  ctx.moveTo(routePoints[0].x, routePoints[0].y)
+  for (let i = 1; i < routePoints.length; i++) {
+    ctx.lineTo(routePoints[i].x, routePoints[i].y)
   }
   ctx.stroke()
   ctx.setLineDash([])
@@ -366,7 +394,7 @@ function drawRoute(ctx, W, H, bounds, t) {
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     ctx.shadowColor = '#ff6b4a'
-    ctx.shadowBlur = 10
+    ctx.shadowBlur = 12
     ctx.moveTo(drawnPoints[0].x, drawnPoints[0].y)
     for (let i = 1; i < drawnPoints.length; i++) {
       ctx.lineTo(drawnPoints[i].x, drawnPoints[i].y)
@@ -376,9 +404,9 @@ function drawRoute(ctx, W, H, bounds, t) {
   }
 }
 
-function drawPins(ctx, W, H, bounds) {
+function drawPins(ctx, W, H) {
   props.points.forEach((p, i) => {
-    const cp = getCanvasPoint(p, bounds, W, H)
+    const cp = latLngToCanvas(p.lat, p.lng, W, H)
     const isStart = i === 0
     const isEnd = i === props.points.length - 1
 
@@ -409,14 +437,14 @@ function drawPins(ctx, W, H, bounds) {
   })
 }
 
-function drawDistanceLabels(ctx, W, H, bounds) {
+function drawDistanceLabels(ctx, W, H) {
   if (props.settings?.showDistance && props.segments) {
     for (let i = 0; i < props.points.length - 1; i++) {
       const p1 = props.points[i]
       const p2 = props.points[i + 1]
       const midLat = (p1.lat + p2.lat) / 2
       const midLng = (p1.lng + p2.lng) / 2
-      const cp = getCanvasPoint({ lat: midLat, lng: midLng }, bounds, W, H)
+      const cp = latLngToCanvas(midLat, midLng, W, H)
 
       const dist = props.segments[i]?.distance || 0
 
@@ -434,9 +462,9 @@ function drawDistanceLabels(ctx, W, H, bounds) {
   }
 }
 
-function drawVehicle(ctx, W, H, bounds, t) {
+function drawVehicle(ctx, W, H, t) {
   const vPos = getVehiclePosition(t)
-  const vCanvas = getCanvasPoint(vPos, bounds, W, H)
+  const vCanvas = latLngToCanvas(vPos.lat, vPos.lng, W, H)
   const vehicle = props.segments?.[0]?.vehicle || { icon: '🚗' }
   const scale = props.settings?.vehicleScale || 0.65
 
@@ -479,6 +507,13 @@ async function startPreview() {
   isPlaying.value = true
   animStartTime = performance.now()
   animDuration = (props.settings?.videoDuration || 15) * 1000
+
+  const W = canvasWidth.value
+  const H = canvasHeight.value
+  const startCam = getCameraState(0, W, H)
+  smoothCamX = startCam.x
+  smoothCamY = startCam.y
+  smoothCamZoom = startCam.zoom
 
   animate()
 }
@@ -538,6 +573,13 @@ async function startRecording() {
 
   const duration = (props.settings?.videoDuration || 15) * 1000
   const preset = getPresetForRatio(props.settings?.ratio, 'standard')
+
+  const W = canvasWidth.value
+  const H = canvasHeight.value
+  const startCam = getCameraState(0, W, H)
+  smoothCamX = startCam.x
+  smoothCamY = startCam.y
+  smoothCamZoom = startCam.zoom
 
   try {
     isExporting.value = true
