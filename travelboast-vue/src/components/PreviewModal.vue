@@ -91,14 +91,14 @@ let cam = { x:0, y:0, zoom:1 }
 let animFrame = null
 let animStart = 0
 let animDur = 0
-let W = 720, H = 1280
+let W = 1080, H = 1920
 
 const ratioLabel = computed(() => {
   const r = props.settings?.ratio || 'vertical'
   return r==='vertical' ? '9:16 竖屏' : r==='horizontal' ? '16:9 横屏' : '1:1 方形'
 })
 
-const RES = { vertical:{w:720,h:1280}, horizontal:{w:1280,h:720}, square:{w:1080,h:1080} }
+const RES = { vertical:{w:1080,h:1920}, horizontal:{w:1920,h:1080}, square:{w:1440,h:1440} }
 
 watch(()=>props.settings?.ratio, () => { nextTick(()=>resizeCanvas()) }, { immediate:true })
 watch(()=>props.show, async v => {
@@ -116,9 +116,8 @@ function resizeCanvas() {
   if(!wrap||!cvs) return
   const rect = wrap.getBoundingClientRect(), dpr = window.devicePixelRatio||1
   const r = RES[props.settings?.ratio]||RES.vertical
-  const tA=r.w/r.h, cA=rect.width/rect.height
-  let dw,dh
-  if(cA>tA){dh=rect.height;dw=dh*tA}else{dw=rect.width;dh=dw/tA}
+  const tA=r.w/r.h
+  let dw=rect.width, dh=dw/tA
   cvs.style.width=Math.round(dw)+'px'; cvs.style.height=Math.round(dh)+'px'
   W=Math.round(dw*dpr); H=Math.round(dh*dpr)
   cvs.width=W; cvs.height=H
@@ -209,8 +208,14 @@ function drawFrame(ctx,cw,ch,t) {
   ctx.save()
   ctx.translate(cw/2,ch/2); ctx.scale(cam.zoom,cam.zoom); ctx.translate(-cam.x,-cam.y)
 
-  // 背景
-  if(mapBg) ctx.drawImage(mapBg,0,0,cw,ch)
+  // 背景 (cover模式，不走形)
+  if(mapBg){
+    const cRatio = cw/ch, mRatio = mapBg.width/mapBg.height
+    let sW, sH, sX = 0, sY = 0
+    if(cRatio > mRatio){ sH = ch; sW = sH * mRatio; sX = (cw - sW) / 2 }
+    else { sW = cw; sH = sW / mRatio; sY = (ch - sH) / 2 }
+    ctx.drawImage(mapBg, sX, sY, sW, sH)
+  }
   else {
     const g=ctx.createLinearGradient(0,0,cw,ch)
     g.addColorStop(0,'#0d1117');g.addColorStop(0.5,'#161b22');g.addColorStop(1,'#0d1117')
