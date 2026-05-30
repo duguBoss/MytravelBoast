@@ -114,13 +114,19 @@ function updateLocal(k,v) { localSettings.value[k]=v; emit('update:settings',{..
 function resizeCanvas() {
   const wrap = canvasWrap.value, cvs = previewCanvas.value
   if(!wrap||!cvs) return
-  const rect = wrap.getBoundingClientRect(), dpr = window.devicePixelRatio||1
+  const rect = wrap.getBoundingClientRect()
+  const dpr = Math.min(window.devicePixelRatio||1, 2)
   const r = RES[props.settings?.ratio]||RES.vertical
-  const tA=r.w/r.h
-  let dw=rect.width, dh=dw/tA
-  cvs.style.width=Math.round(dw)+'px'; cvs.style.height=Math.round(dh)+'px'
-  W=Math.round(dw*dpr); H=Math.round(dh*dpr)
-  cvs.width=W; cvs.height=H
+  const tA = r.w/r.h
+  const cA = rect.width/rect.height
+  // fitting 计算
+  let sw, sh
+  if(cA > tA){ sh=rect.height; sw=sh*tA } else { sw=rect.width; sh=sw/tA }
+  cvs.style.width = Math.round(sw)+'px'
+  cvs.style.height = Math.round(sh)+'px'
+  // 内部分辨率
+  W = r.w; H = r.h
+  cvs.width = W; cvs.height = H
   if(mapBg) drawFrame(cvs.getContext('2d'),W,H,0)
 }
 
