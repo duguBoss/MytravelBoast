@@ -84,14 +84,12 @@ const qualityLabels = { draft:'草稿', standard:'标准', high:'高清' }
 const previewCanvas = ref(null)
 const canvasWrapper = ref(null)
 
-// 导出分辨率 — 高清
-const RES = { vertical:{w:720,h:1280}, horizontal:{w:1280,h:720}, square:{w:1080,h:1080} }
-const canvasW = ref(720)
-const canvasH = ref(1280)
+// 比例定义（导出时按此比例）
+const RATIOS = { vertical:9/16, horizontal:16/9, square:1 }
 
-// 显示用 DPR 缩放
-let dprCanvasW = 720
-let dprCanvasH = 1280
+// 实际画布尺寸（运行时动态计算）
+let renderW = 720
+let renderH = 1280
 
 const isPlaying = ref(false)
 const isRecording = ref(false)
@@ -115,8 +113,8 @@ const ratioLabel = computed(() => {
 })
 
 watch(()=>props.settings?.ratio, v => {
-  const r = RES[v] || RES.vertical
-  canvasW.value = r.w; canvasH.value = r.h
+  // 比例变化时重新计算尺寸
+  nextTick(resizeCanvas)
 },{immediate:true})
 
 watch(()=>props.show, async v => {
@@ -229,13 +227,13 @@ function drawBackground(ctx,W,H){
   const b=getBounds()
   // 深色基底
   const bg=ctx.createLinearGradient(0,0,W,H)
-  bg.addColorStop(0,'#0d1117'); bg.addColorStop(0.5,'#161b22'); bg.addColorStop(1,'#0d1117')
+  bg.addColorStop(0,'#0a0e14'); bg.addColorStop(0.5,'#111827'); bg.addColorStop(1,'#0a0e14')
   ctx.fillStyle=bg; ctx.fillRect(-W,-H,W*3,H*3)
 
-  // 经纬网格
-  ctx.strokeStyle='rgba(48,54,61,0.6)'
-  ctx.lineWidth=0.5
-  const latStep=(b.maxLat-b.minLat)/8, lngStep=(b.maxLng-b.minLng)/10
+  // 经纬网格 — 更粗更亮
+  ctx.strokeStyle='rgba(75,85,99,0.45)'
+  ctx.lineWidth=Math.max(1, W*0.001)
+  const latStep=(b.maxLat-b.minLat)/6, lngStep=(b.maxLng-b.minLng)/8
   for(let lat=b.minLat;lat<=b.maxLat;lat+=latStep){
     const p=toCanvas(lat,b.minLng,W,H), p2=toCanvas(lat,b.maxLng,W,H)
     ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p2.x,p2.y);ctx.stroke()
@@ -245,26 +243,46 @@ function drawBackground(ctx,W,H){
     ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p2.x,p2.y);ctx.stroke()
   }
 
-  // 大陆轮廓暗示（柔和色块）
-  ctx.fillStyle='rgba(33,38,45,0.5)'
-  // 简化的大陆形状提示
+  // 大陆轮廓 — 基于路线 bounds 动态分布
   drawLandHint(ctx,W,H,b)
 }
 
 function drawLandHint(ctx,W,H,b){
-  // 根据 bounds 范围绘制模糊的大陆暗示区域
-  const cx=W/2, cy=H/2
-  // 用几个椭圆模拟大陆分布
-  const lands=[
-    {x:cx*0.35,y:cy*0.55,rx:W*0.18,ry:H*0.22},   // 亚欧大陆区
-    {x:cx*0.75,y:cy*0.52,rx:W*0.1,ry:H*0.18},     // 北美
-    {x:cx*0.72,y:cy*0.85,rx:W*0.07,ry:H*0.12},    // 南美
-    {x:cx*0.52,y:cy*0.88,rx:W*0.05,ry:H*0.08},     // 非洲
-    {x:cx*0.88,y:cy*0.78,rx:W*0.08,ry:H*0.1},      // 澳洲
+  // 根据实际路线范围，在路线周围生成大陆色块
+  const latRange=b.maxLat-b.minLat, lngRange=b.maxLng-b.minLng
+  const cx=(toCanvas((b.minLat+b.maxLat)/2,b.minLng,W,H).x + toCanvas((b.minLat+b.maxLat)/2,b.maxLng,W,H).x)/2
+  const cy=(toCanvas(b.minLat,(b.minLng+b.maxLng)/2,W,H).y + toCanvas(b.maxLat,(b.minLng+b.maxLng)/2,W,H).y)/2
+
+  ctx.fillStyle='rgba(30,41,59,0.55)'
+
+  // 在路线起终点周围生成大陆块
+  const lands=[]
+  props.points.forEach((p,i)=>{
+    const cp=toCanvas(p.lat,p.lng,W,H)
+    const isEnd=i===0||i===props.points.length-1
+    lands.push({
+      x:cp.x+(isEnd?W*0.08:-W*0.05),
+      y:cp.y+(isEnd?-H*0.06:H*0.04),
+      rx:W*0.15+Math.random()*W*0.1,
+      ry:H*0.12+Math.random()*H*0.08
+    })
+  })
+
+  // 在路线两侧添加背景大陆
+  const midLat=(b.minLat+b.maxLat)/2, midLng=(b.minLng+b.maxLng)/2
+  const sidePoints=[
+    {lat:midLat+latRange*0.3,lng:midLng-lngRange*0.4},
+    {lat:midLat-latRange*0.25,lng:midLng+lngRange*0.35},
+    {lat:b.minLat+latRange*0.2,lng:b.minLng+lngRange*0.2},
   ]
+  sidePoints.forEach(p=>{
+    const cp=toCanvas(p.lat,p.lng,W,H)
+    lands.push({x:cp.x,y:cp.y,rx:W*0.12,ry:H*0.1})
+  })
+
   lands.forEach(l=>{
     ctx.beginPath()
-    ctx.ellipse(l.x,l.y,l.rx,l.ry,0,0,Math.PI*2)
+    ctx.ellipse(l.x,l.y,l.rx,l.ry,Math.random()*0.5,0,Math.PI*2)
     ctx.fill()
   })
 }
@@ -408,24 +426,27 @@ function resizeCanvas(){
   const rect=wrapper.getBoundingClientRect()
   const dpr=window.devicePixelRatio||1
 
-  // 显示尺寸 = 容器尺寸（保持比例）
-  const res=RES[props.settings?.ratio]||RES.vertical
-  const targetAspect=res.w/res.h
+  // 目标比例
+  const targetAspect=RATIOS[props.settings?.ratio]||RATIOS.vertical
   const containerAspect=rect.width/rect.height
 
+  // 计算 fitting 后的显示尺寸（CSS px）
   let dw,dh
   if(containerAspect>targetAspect){ dh=rect.height; dw=dh*targetAspect }
   else{ dw=rect.width; dh=dw/targetAspect }
 
-  cvs.style.width=dw+'px'; cvs.style.height=dh+'px'
+  cvs.style.width=Math.round(dw)+'px'
+  cvs.style.height=Math.round(dh)+'px'
 
-  // 内部分辨率 = 导出分辨率
-  cvs.width=res.w; cvs.height=res.h
-  dprCanvasW=res.w; dprCanvasH=res.h
+  // 内部分辨率 = 显示尺寸 × DPR（高清，不走形）
+  renderW=Math.round(dw*dpr)
+  renderH=Math.round(dh*dpr)
+  cvs.width=renderW
+  cvs.height=renderH
 
   // 初始绘制
   const ctx=cvs.getContext('2d')
-  drawFrame(ctx,res.w,res.h,0)
+  drawFrame(ctx,renderW,renderH,0)
 }
 
 // ========== 动画控制 ==========
@@ -434,8 +455,7 @@ async function startPreview(){
   isPlaying.value=true
   animStart=performance.now()
   animDur=(localSettings.value.videoDuration||15)*1000
-  const res=RES[props.settings?.ratio]||RES.vertical
-  const c=cameraAt(0,res.w,res.h)
+  const c=cameraAt(0,renderW,renderH)
   cam={x:c.x,y:c.y,z:c.zoom,tx:c.x,ty:c.y,tz:c.zoom}
   animate()
 }
@@ -445,7 +465,7 @@ function animate(){
   const t=Math.min(el/animDur,1)
   progress.value=t*100
   const cvs=previewCanvas.value
-  if(cvs)drawFrame(cvs.getContext('2d'),cvs.width,cvs.height,t)
+  if(cvs)drawFrame(cvs.getContext('2d'),renderW,renderH,t)
   if(t<1)animFrame=requestAnimationFrame(animate)
   else{ isPlaying.value=false; if(isRecording.value)stopRecording() }
 }
@@ -466,8 +486,7 @@ async function startRecording(){
 
   const dur=(localSettings.value.videoDuration||15)*1000
   const qual=localSettings.value.videoQuality||'standard'
-  const res=RES[props.settings?.ratio]||RES.vertical
-  const c0=cameraAt(0,res.w,res.h)
+  const c0=cameraAt(0,renderW,renderH)
   cam={x:c0.x,y:c0.y,z:c0.zoom,tx:c0.x,ty:c0.y,tz:c0.zoom}
 
   try{
