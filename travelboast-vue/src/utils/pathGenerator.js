@@ -1,49 +1,65 @@
 /**
- * Geodesic Path Generator
- * Generates dense path points along the route between two coordinates.
- * Creates a realistic travel path instead of straight lines.
+ * Geodesic Path Generator - 使用 Vincenty 公式生成大地测量弧线路径
  */
 
-/**
- * Generate geodesic path between two points
- * @param {Object} start - { lat, lng }
- * @param {Object} end - { lat, lng }
- * @param {number} numPoints - Number of intermediate points (default: 100)
- * @returns {Array<{ lat, lng }>} Path points including start and end
- */
 export function generateGeodesicPath(start, end, numPoints = 100) {
   const path = []
   
-  // Add start point
   path.push({ lat: start.lat, lng: start.lng })
   
-  // Generate intermediate points
-  for (let i = 1; i < numPoints; i++) {
-    const t = i / numPoints
-    const lat = start.lat + (end.lat - start.lat) * t
-    const lng = start.lng + (end.lng - start.lng) * t
-    
-    // Add slight curve to simulate road following
-    const curveOffset = Math.sin(t * Math.PI) * 0.02 * (Math.random() - 0.5)
-    
-    path.push({
-      lat: lat + curveOffset,
-      lng: lng + curveOffset
-    })
+  // Vincenty 公式参数
+  const lat1 = start.lat * Math.PI / 180
+  const lon1 = start.lng * Math.PI / 180
+  const lat2 = end.lat * Math.PI / 180
+  const lon2 = end.lng * Math.PI / 180
+  
+  // 计算大圆距离和初始方位角
+  const dLon = lon2 - lon1
+  
+  // 使用 Haversine 计算距离和方位角更稳定
+  const sinLat1 = Math.sin(lat1), cosLat1 = Math.cos(lat1)
+  const sinLat2 = Math.sin(lat2), cosLat2 = Math.cos(lat2)
+  
+  const y = Math.sqrt(
+    Math.pow(cosLat2 * Math.sin(dLon), 2) +
+    Math.pow(cosLat1 * sinLat2 - sinLat1 * cosLat2 * Math.cos(dLon), 2)
+  )
+  const x = sinLat1 * sinLat2 + cosLat1 * cosLat2 * Math.cos(dLon)
+  const angularDist = Math.atan2(y, x) // 大圆距离（弧度）
+  
+  if (angularDist === 0) {
+    path.push({ lat: end.lat, lng: end.lng })
+    return path
   }
   
-  // Add end point
-  path.push({ lat: end.lat, lng: end.lng })
+  // 初始方位角
+  const bearing = Math.atan2(
+    Math.sin(dLon) * cosLat2,
+    cosLat1 * sinLat2 - sinLat1 * cosLat2 * Math.cos(dLon)
+  )
   
+  // 沿大圆路径插值点
+  for (let i = 1; i < numPoints; i++) {
+    const f = i / numPoints
+    
+    // 大圆插值公式
+    const A = Math.sin((1 - f) * angularDist) / Math.sin(angularDist)
+    const B = Math.sin(f * angularDist) / Math.sin(angularDist)
+    
+    const x = A * cosLat1 * Math.cos(lon1) + B * cosLat2 * Math.cos(lon2)
+    const y = A * cosLat1 * Math.sin(lon1) + B * cosLat2 * Math.sin(lon2)
+    const z = A * sinLat1 + B * sinLat2
+    
+    const lat = Math.atan2(z, Math.sqrt(x*x + y*y)) * 180 / Math.PI
+    const lng = (Math.atan2(y, x) * 180 / Math.PI + 540) % 360 - 180 // 归一化到 [-180, 180]
+    
+    path.push({ lat, lng })
+  }
+  
+  path.push({ lat: end.lat, lng: end.lng })
   return path
 }
 
-/**
- * Generate multi-segment path with waypoints
- * @param {Array} points - Array of { lat, lng, name } objects
- * @param {number} pointsPerSegment - Points per segment (default: 80)
- * @returns {Array<{ lat, lng }>} Full path
- */
 export function generateMultiSegmentPath(points, pointsPerSegment = 80) {
   if (points.length < 2) return points
   
@@ -59,7 +75,6 @@ export function generateMultiSegmentPath(points, pointsPerSegment = 80) {
     if (i === 0) {
       fullPath.push(...segment)
     } else {
-      // Skip first point of subsequent segments to avoid duplicates
       fullPath.push(...segment.slice(1))
     }
   }
