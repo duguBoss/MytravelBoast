@@ -534,6 +534,7 @@ onMounted(() => {
     :points="points"
     :segments="segments"
     :settings="settings"
+    :map-instance="map"
     @close="showPreview = false"
     @toast="showToast"
     @update:settings="newSettings => Object.assign(settings, newSettings)"

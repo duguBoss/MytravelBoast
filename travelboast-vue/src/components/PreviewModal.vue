@@ -64,6 +64,7 @@ const props = defineProps({
   points: Array,
   segments: Array,
   settings: Object,
+  mapInstance: Object,
 })
 
 const emit = defineEmits(['close', 'toast', 'update:settings'])
@@ -79,6 +80,8 @@ const progress = ref(0)
 const frameInfo = ref('')
 const exportStatus = ref('')
 const mapBackground = ref(null)
+const mapBounds = ref(null) // 保存地图的实际 bounds
+const mapSize = ref({ width: 0, height: 0 }) // 保存地图的实际尺寸
 
 let animFrame = null
 let animStartTime = 0
@@ -108,6 +111,26 @@ watch(() => props.show, (val) => {
 })
 
 function getCanvasPoint(point, bounds, width, height) {
+  if (!bounds) return { x: width / 2, y: height / 2 }
+  
+  // 如果我们有地图的实际 bounds，使用正确的投影转换
+  if (mapBounds.value && props.mapInstance) {
+    // 使用 Leaflet 的 latLngToContainerPoint，但需要根据画布尺寸调整
+    const map = props.mapInstance
+    const mapSize = map.getSize()
+    const pointOnMap = map.latLngToContainerPoint([point.lat, point.lng])
+    
+    // 计算缩放比例
+    const scaleX = width / mapSize.x
+    const scaleY = height / mapSize.y
+    
+    return {
+      x: pointOnMap.x * scaleX,
+      y: pointOnMap.y * scaleY
+    }
+  }
+  
+  // 回退到原来的简单计算
   const margin = 60
   const x = margin + ((point.lng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * (width - margin * 2)
   const y = margin + ((bounds.maxLat - point.lat) / (bounds.maxLat - bounds.minLat)) * (height - margin * 2)
@@ -116,6 +139,19 @@ function getCanvasPoint(point, bounds, width, height) {
 
 function getRouteBounds() {
   if (!props.points || props.points.length === 0) return null
+  
+  // 如果有地图实例，直接使用地图的实际 bounds
+  if (props.mapInstance) {
+    const b = props.mapInstance.getBounds()
+    return {
+      minLat: b.getSouth(),
+      maxLat: b.getNorth(),
+      minLng: b.getWest(),
+      maxLng: b.getEast()
+    }
+  }
+  
+  // 回退到原来的计算
   let minLat = Infinity, maxLat = -Infinity
   let minLng = Infinity, maxLng = -Infinity
   props.points.forEach(p => {
@@ -203,6 +239,19 @@ async function loadMapBackground() {
 
     emit('toast', '正在加载地图背景...')
     
+    // 获取地图实际 bounds 和尺寸
+    if (props.mapInstance) {
+      const b = props.mapInstance.getBounds()
+      mapBounds.value = {
+        minLat: b.getSouth(),
+        maxLat: b.getNorth(),
+        minLng: b.getWest(),
+        maxLng: b.getEast()
+      }
+      const size = props.mapInstance.getSize()
+      mapSize.value = { width: size.x, height: size.y }
+    }
+    
     const canvas = await html2canvas(mapEl, {
       useCORS: true,
       allowTaint: true,
@@ -224,6 +273,29 @@ function drawFrame(ctx, W, H, t) {
   ctx.clearRect(0, 0, W, H)
 
   if (mapBackground.value) {
+    // 正确保持比例绘制地图背景
+    const bgW = mapBackground.value.width
+    const bgH = mapBackground.value.height
+    const bgAspect = bgW / bgH
+    const canvasAspect = W / H
+    
+    let drawW, drawH, offsetX, offsetY
+    
+    if (canvasAspect > bgAspect) {
+      // 画布更宽，按高度匹配
+      drawH = H
+      drawW = H * bgAspect
+      offsetX = (W - drawW) / 2
+      offsetY = 0
+    } else {
+      // 画布更高，按宽度匹配
+      drawW = W
+      drawH = W / bgAspect
+      offsetX = 0
+      offsetY = (H - drawH) / 2
+    }
+    
+    // 我们不裁剪，直接拉伸填满画布，因为坐标转换是基于整个画布的
     ctx.drawImage(mapBackground.value, 0, 0, W, H)
   } else {
     const gradient = ctx.createLinearGradient(0, 0, W, H)
