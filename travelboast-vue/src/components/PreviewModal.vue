@@ -87,10 +87,13 @@ async function init(retry=0){
   clean()
   const el = mapBox.value
   if(!el){if(retry<5){setTimeout(()=>init(retry+1),200)};return}
+  // 确保容器有尺寸
+  const rect = el.getBoundingClientRect()
+  if(rect.width<10 || rect.height<10){if(retry<10){setTimeout(()=>init(retry+1),300)};return}
   try{
     pmap = L.map(el,{center:[props.points[0].lat,props.points[0].lng],zoom:5,zoomControl:false,attributionControl:false})
     tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,subdomains:['a','b','c']}).addTo(pmap)
-    await new Promise(r=>setTimeout(r,800))
+    await new Promise(r=>setTimeout(r,600))
     const coords = props.points.map(p=>[p.lat,p.lng])
     rline = L.polyline(coords,{color:'#ff6b4a',weight:4,opacity:0.85}).addTo(pmap)
     props.points.forEach((p,i)=>{
@@ -218,12 +221,12 @@ onBeforeUnmount(()=>{if(af)cancelAnimationFrame(af);clean()})
 .content{display:flex;gap:16px;padding:0 20px 16px;flex:1;min-height:0}
 @media(max-width:820px){.content{flex-direction:column}}
 
-.map-area{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
-.map-box{flex:1;border-radius:12px;overflow:hidden;background:#0a0e14;position:relative;min-height:400px}
-.map-box.shape-vertical{max-width:380px;margin:0 auto;aspect-ratio:9/16}
-.map-box.shape-horizontal{aspect-ratio:16/9}
-.map-box.shape-square{max-width:500px;margin:0 auto;aspect-ratio:1/1}
-.map-box :deep(.leaflet-container){background:#0a0e14;height:100%!important;width:100%!important}
+.map-area{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;align-items:center}
+.map-box{border-radius:12px;overflow:hidden;background:#0a0e14;position:relative;width:100%}
+.map-box.shape-vertical{max-width:380px;aspect-ratio:9/16;max-height:70vh}
+.map-box.shape-horizontal{aspect-ratio:16/9;max-height:60vh}
+.map-box.shape-square{max-width:500px;aspect-ratio:1/1;max-height:70vh}
+.map-box :deep(.leaflet-container){background:#0a0e14;height:100%!important;width:100%!important;min-height:300px}
 
 .ctrl-bar{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
 .btn{padding:8px 16px;border-radius:8px;border:1.5px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:rgba(255,255,255,.5);font-size:12px;font-weight:700;cursor:pointer;transition:.2s}
