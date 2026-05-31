@@ -24,6 +24,14 @@
           </div>
         </div>
         <div class="panel" v-if="mode==='export'">
+          <!-- 地图样式快捷切换 -->
+          <div class="sec">
+            <div class="r"><span>地图模式</span></div>
+            <div class="gs" style="grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button :class="{on:props.settings?.mapStyle==='satellite'}" @click="setMapStyle('satellite')">卫星地图</button>
+              <button :class="{on:props.settings?.mapStyle==='voyager'}" @click="setMapStyle('voyager')">探索地图</button>
+            </div>
+          </div>
           <div class="sec">
             <div class="r"><span>时长</span><span class="v">{{local.vd}}s</span></div>
             <input type="range" min="5" max="60" :value="local.vd" step="1" class="s" @input="setL('vd',+$event.target.value)">
@@ -101,6 +109,22 @@ let af = null, a0 = 0, ad = 0
 watch(shape, v => emit('update:settings',{...props.settings,ratio:v}))
 watch(()=>props.show, async v=>{ if(v){await nextTick();setTimeout(init,300)}else{clean()} })
 watch(()=>props.settings, v=>{if(v){local.value.vd=v.videoDuration??15;local.value.vs=v.vehicleScale??0.65;local.value.tilt=v.tilt??30;local.value.zoomScale=v.zoomScale??0.33}},{immediate:true})
+
+// 监听地图样式，即时切换图层不透明度，无缝流畅
+watch(() => props.settings?.mapStyle, (val) => {
+  if (!pmap) return
+  const overlays = ['voyager-overlay', 'satellite-overlay', 'dark-overlay', 'minimal-overlay']
+  overlays.forEach(id => {
+    if (pmap.getLayer(id)) {
+      const active = id.startsWith(val)
+      pmap.setPaintProperty(id, 'raster-opacity', active ? 1.0 : 0.0)
+    }
+  })
+})
+
+function setMapStyle(style) {
+  emit('update:settings', { ...props.settings, mapStyle: style })
+}
 
 function setL(k,v){local.value[k]=v;emit('update:settings',{...props.settings,[k]:v});if(k==='tilt')applyTilt()}
 

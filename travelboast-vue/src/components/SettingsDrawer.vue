@@ -177,7 +177,7 @@ onMounted(initCompass)
           <div class="map-style-grid">
             <button class="map-style-card" :class="{ active: settings.mapStyle === 'voyager' }" @click="setOpt('mapStyle', 'voyager')">
               <div class="style-preview voyager"></div>
-              <span>清新</span>
+              <span>探索地图</span>
             </button>
             <button class="map-style-card" :class="{ active: settings.mapStyle === 'dark' }" @click="setOpt('mapStyle', 'dark')">
               <div class="style-preview dark"></div>
@@ -185,7 +185,7 @@ onMounted(initCompass)
             </button>
             <button class="map-style-card" :class="{ active: settings.mapStyle === 'satellite' }" @click="setOpt('mapStyle', 'satellite')">
               <div class="style-preview satellite"></div>
-              <span>卫星</span>
+              <span>卫星地图</span>
             </button>
             <button class="map-style-card" :class="{ active: settings.mapStyle === 'minimal' }" @click="setOpt('mapStyle', 'minimal')">
               <div class="style-preview minimal"></div>
