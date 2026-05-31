@@ -424,17 +424,49 @@ function getRouteZoom(){
 }
 
 function getCam(t){
-  const pts=props.points, s=pts[0], e=pts[pts.length-1], v=vehAt(t)
-  const routeZoom = getRouteZoom()
-  const closeZoom = Math.min(routeZoom + 2, 16)
-  let lat,lng,z,pitch
-  const basePitch = local.value.tilt || 0
-  if(t<0.08){const p=ease(t/0.08);lat=s.lat;lng=s.lng;z=closeZoom-p*(closeZoom-routeZoom);pitch=basePitch}
-  else if(t<0.2){const p=ei((t-0.08)/0.12);lat=s.lat+(v.lat-s.lat)*p;lng=s.lng+(v.lng-s.lng)*p;z=routeZoom+(closeZoom-routeZoom)*(1-p);pitch=basePitch+10*p}
-  else if(t<0.8){const ah=vehAt(Math.min(t+0.05,1));lat=v.lat*0.5+ah.lat*0.5;lng=v.lng*0.5+ah.lng*0.5;z=routeZoom;pitch=basePitch+10}
-  else if(t<0.94){const p=ei((t-0.8)/0.14);lat=v.lat+(e.lat-v.lat)*p;lng=v.lng+(e.lng-v.lng)*p;z=routeZoom+(closeZoom-routeZoom)*p;pitch=basePitch+10*(1-p)}
-  else{const p=ei((t-0.94)/0.06);lat=e.lat;lng=e.lng;z=closeZoom-p*(closeZoom-routeZoom);pitch=basePitch}
-  return{lat,lng,z,pitch}
+  const pts = props.points
+  const v = vehAt(t)
+  
+  // 1. Calculate travel heading (bearing) at current progress t
+  let currentBearing = 0
+  if (t < 0.98) {
+    const nextV = vehAt(t + 0.01)
+    const dy = nextV.lat - v.lat
+    const dx = nextV.lng - v.lng
+    currentBearing = (Math.atan2(dx, dy) * 180) / Math.PI
+  } else {
+    const prevV = vehAt(Math.max(0, t - 0.01))
+    const dy = v.lat - prevV.lat
+    const dx = v.lng - prevV.lng
+    currentBearing = (Math.atan2(dx, dy) * 180) / Math.PI
+  }
+
+  // 2. Parabolic vertical camera altitude ("Classic Arc" - signature TravelBoast effect)
+  // Smoothly swoops out to space (globe view) in the middle, and zooms in close at start & end
+  const sinusoidalProgress = Math.sin(t * Math.PI)
+  
+  // Starting close zoom (13.5) and space zoom out (2.5)
+  const currentZoom = 13.5 - (sinusoidalProgress * 11.0)
+  
+  // Deep 3D tilt angle (62°) close to ground, flat top-down angle (5°) in space
+  const currentPitch = 62 - (sinusoidalProgress * 57)
+  
+  // Slow down the bearing rotation in deep space to avoid map spinning, but track heading closely near the ground
+  let finalBearing = 0
+  if (currentZoom < 6) {
+    // Gentle space camera rotation matching progress
+    finalBearing = (t * 45) % 360
+  } else {
+    finalBearing = currentBearing
+  }
+
+  return {
+    lat: v.lat,
+    lng: v.lng,
+    z: Math.max(2.0, currentZoom),
+    pitch: Math.max(5.0, currentPitch),
+    bearing: finalBearing
+  }
 }
 
 function vehAt(t){
@@ -457,7 +489,7 @@ function an(){
     const vp=vehAt(t)
     vmarker.setLngLat([vp.lng,vp.lat])
     const c=getCam(t)
-    pmap.jumpTo({ center: [c.lng, c.lat], zoom: c.z, pitch: c.pitch })
+    pmap.jumpTo({ center: [c.lng, c.lat], zoom: c.z, pitch: c.pitch, bearing: c.bearing })
     updatePGlobe()
   }
   if(t<1)af=requestAnimationFrame(an);else{isPlaying.value=false;if(isRecording.value)stopRec()}

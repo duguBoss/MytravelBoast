@@ -302,10 +302,25 @@ function updateVehiclePosition(t) {
     }
   }
 
-  // Smooth cinematic camera tracking: center on the moving vehicle
+  // Smooth cinematic camera tracking: center on the moving vehicle with parabolic height/angle swoops
   if (map && isPlaying.value) {
+    const sinusoidalProgress = Math.sin(t * Math.PI)
+    const currentZoom = 13.5 - (sinusoidalProgress * 11.0)
+    const currentPitch = 62 - (sinusoidalProgress * 57)
+    
+    let finalBearing = 0
+    if (currentZoom < 6) {
+      // Space camera slow rotation
+      finalBearing = (t * 45) % 360
+    } else {
+      finalBearing = heading
+    }
+
     map.jumpTo({
-      center: [lng, lat]
+      center: [lng, lat],
+      zoom: Math.max(2.0, currentZoom),
+      pitch: Math.max(5.0, currentPitch),
+      bearing: finalBearing
     })
   }
 }
