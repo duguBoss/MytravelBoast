@@ -110,8 +110,8 @@ async function init(retry=0){
   const rect = el.getBoundingClientRect()
   if(rect.width<10 || rect.height<10){if(retry<10){setTimeout(()=>init(retry+1),300)};return}
   try{
-    pmap = L.map(el,{center:[props.points[0].lat,props.points[0].lng],zoom:5,zoomControl:false,attributionControl:false,minZoom:2})
-    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,minZoom:2,subdomains:['a','b','c']}).addTo(pmap)
+    pmap = L.map(el,{center:[props.points[0].lat,props.points[0].lng],zoom:5,zoomControl:false,attributionControl:false,minZoom:2,maxBounds:[[-90,-180],[90,180]]})
+    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,minZoom:2,subdomains:['a','b','c'],noWrap:true,bounds:[[-90,-180],[90,180]]}).addTo(pmap)
     // 等待瓦片加载完成
     await new Promise(resolve => {
       if(tileLayer.isLoading()) tileLayer.on('load', resolve)
