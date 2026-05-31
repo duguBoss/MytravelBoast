@@ -9,7 +9,7 @@
       <div class="content">
         <div class="map-area">
           <!-- 真实地图，不走形 -->
-          <div class="map-box" ref="mapBox" :class="['shape-'+shape, {tilted: local.tilt>0}]" :style="{'--tilt': local.tilt+'deg'}"></div>
+          <div class="map-box" ref="mapBox" :class="'shape-'+shape"></div>
           <div class="ctrl-bar">
             <button class="btn" :class="{on:shape==='vertical'}" @click="shape='vertical'">9:16</button>
             <button class="btn" :class="{on:shape==='horizontal'}" @click="shape='horizontal'">16:9</button>
@@ -87,7 +87,18 @@ watch(shape, v => emit('update:settings',{...props.settings,ratio:v}))
 watch(()=>props.show, async v=>{ if(v){await nextTick();setTimeout(init,300)}else{clean()} })
 watch(()=>props.settings, v=>{if(v){local.value.vd=v.videoDuration??15;local.value.vs=v.vehicleScale??0.65;local.value.tilt=v.tilt??30;local.value.zoomScale=v.zoomScale??0.33}},{immediate:true})
 
-function setL(k,v){local.value[k]=v;emit('update:settings',{...props.settings,[k]:v})}
+function setL(k,v){local.value[k]=v;emit('update:settings',{...props.settings,[k]:v});if(k==='tilt')applyTilt()}
+
+function applyTilt(){
+  if(!pmap) return
+  const tilt = local.value.tilt ?? 0
+  const container = pmap.getContainer()
+  if(!container) return
+  const pane = container.querySelector('.leaflet-map-pane')
+  const tilePane = container.querySelector('.leaflet-tile-pane')
+  if(pane) pane.style.transform = tilt>0 ? 'perspective(800px) rotateX('+tilt+'deg)' : ''
+  if(tilePane) tilePane.style.overflow = 'visible'
+}
 
 // ======== 真实地图 ========
 async function init(retry=0){
@@ -99,9 +110,13 @@ async function init(retry=0){
   const rect = el.getBoundingClientRect()
   if(rect.width<10 || rect.height<10){if(retry<10){setTimeout(()=>init(retry+1),300)};return}
   try{
-    pmap = L.map(el,{center:[props.points[0].lat,props.points[0].lng],zoom:5,zoomControl:false,attributionControl:false})
-    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,subdomains:['a','b','c']}).addTo(pmap)
-    await new Promise(r=>setTimeout(r,600))
+    pmap = L.map(el,{center:[props.points[0].lat,props.points[0].lng],zoom:5,zoomControl:false,attributionControl:false,minZoom:2})
+    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,minZoom:2,subdomains:['a','b','c']}).addTo(pmap)
+    // 等待瓦片加载完成
+    await new Promise(resolve => {
+      if(tileLayer.isLoading()) tileLayer.on('load', resolve)
+      else resolve()
+    })
     const coords = props.points.map(p=>[p.lat,p.lng])
     rline = L.polyline(coords,{color:'#ff6b4a',weight:4,opacity:0.85}).addTo(pmap)
     props.points.forEach((p,i)=>{
@@ -116,6 +131,7 @@ async function init(retry=0){
     const divIcon = L.divIcon({html:'<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">'+icon+'</div>',iconSize:[32,32],iconAnchor:[16,16],className:'vm'})
     vmarker = L.marker([props.points[0].lat,props.points[0].lng],{icon:divIcon}).addTo(pmap)
     pmap.fitBounds(coords,{padding:[50,50]})
+    applyTilt()
     await nextTick()
     pmap.invalidateSize()
     ready.value = true
@@ -246,12 +262,13 @@ onBeforeUnmount(()=>{if(af)cancelAnimationFrame(af);clean()})
 @media(max-width:820px){.content{flex-direction:column}}
 
 .map-area{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;align-items:center}
-.map-box{border-radius:12px;overflow:hidden;background:#0a0e14;position:relative;width:100%;transition:transform .3s ease}
+.map-box{border-radius:12px;overflow:visible;background:#0a0e14;position:relative;width:100%}
 .map-box.shape-vertical{max-width:380px;aspect-ratio:9/16;max-height:70vh}
 .map-box.shape-horizontal{aspect-ratio:16/9;max-height:60vh}
 .map-box.shape-square{max-width:500px;aspect-ratio:1/1;max-height:70vh}
-.map-box.tilted{transform:perspective(800px) rotateX(var(--tilt,0deg))}
-.map-box :deep(.leaflet-container){background:#0a0e14;height:100%!important;width:100%!important;min-height:300px}
+.map-box :deep(.leaflet-container){background:#0a0e14;height:100%!important;width:100%!important;min-height:300px;overflow:visible}
+.map-box :deep(.leaflet-map-pane){transform-origin:center center}
+.map-box :deep(.leaflet-tile-pane){overflow:visible}
 
 .ctrl-bar{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
 .btn{padding:8px 16px;border-radius:8px;border:1.5px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:rgba(255,255,255,.5);font-size:12px;font-weight:700;cursor:pointer;transition:.2s}
