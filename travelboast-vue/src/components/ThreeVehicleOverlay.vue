@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import maplibregl from 'maplibre-gl'
 
 const props = defineProps({
   visible: Boolean,
@@ -16,13 +17,7 @@ const props = defineProps({
 const canvasContainer = ref(null)
 let scene, camera, renderer, carModel, animationId
 let isInitialized = false
-
-// Convert lat/lng to pixel position relative to map container
-function getPixelPosition(lat, lng) {
-  if (!props.mapInstance) return { x: 0, y: 0 }
-  const point = props.mapInstance.project([lng, lat])
-  return { x: point.x, y: point.y }
-}
+let marker = null
 
 function init() {
   if (isInitialized || !canvasContainer.value) return
@@ -102,7 +97,7 @@ function init() {
       carModel.rotation.y = THREE.MathUtils.degToRad(-props.heading + 90)
 
       scene.add(carModel)
-      updatePosition()
+      updateMarker()
     },
     undefined,
     (error) => {
@@ -154,7 +149,7 @@ function createFallbackModel() {
   carModel = group
   carModel.rotation.y = THREE.MathUtils.degToRad(-props.heading + 90)
   scene.add(carModel)
-  updatePosition()
+  updateMarker()
 }
 
 function animate() {
@@ -168,26 +163,32 @@ function animate() {
   }
 }
 
-function updatePosition() {
+function updateMarker() {
   if (!canvasContainer.value || !props.mapInstance) return
-  const pos = getPixelPosition(props.lat, props.lng)
-  const container = canvasContainer.value
-  const size = Math.round(120 * props.scale)
-
-  container.style.left = (pos.x - size / 2) + 'px'
-  container.style.top = (pos.y - size / 2) + 'px'
+  
+  if (props.visible) {
+    if (!marker) {
+      marker = new maplibregl.Marker({ element: canvasContainer.value, anchor: 'center' })
+        .setLngLat([props.lng, props.lat])
+        .addTo(props.mapInstance)
+    } else {
+      marker.setLngLat([props.lng, props.lat])
+    }
+  } else {
+    if (marker) {
+      marker.remove()
+      marker = null
+    }
+  }
 }
 
 function updateRotation() {
   if (carModel) {
-    // heading: 0 = north (pointing up on map), clockwise
-    // Three.js Y rotation: 0 = facing +Z (which is south on map if we consider Y-up)
-    // We need to map: north (0°) -> car faces -Z (up on screen)
-    // So: rotation.y = -heading + 90 to align correctly
     carModel.rotation.y = THREE.MathUtils.degToRad(-props.heading + 90)
   }
 }
 
+// Ensure WebGL dimensions match scale
 function updateScale() {
   if (!canvasContainer.value) return
   const size = Math.round(120 * props.scale)
@@ -204,6 +205,10 @@ function cleanup() {
     cancelAnimationFrame(animationId)
     animationId = null
   }
+  if (marker) {
+    marker.remove()
+    marker = null
+  }
   if (renderer) {
     renderer.dispose()
     if (renderer.domElement && renderer.domElement.parentNode) {
@@ -218,35 +223,33 @@ function cleanup() {
 }
 
 // Watch for changes
-watch(() => props.lat, updatePosition)
-watch(() => props.lng, updatePosition)
+watch(() => props.lat, updateMarker)
+watch(() => props.lng, updateMarker)
 watch(() => props.heading, updateRotation)
 watch(() => props.scale, () => {
   updateScale()
-  updatePosition()
+  updateMarker()
 })
 watch(() => props.visible, (v) => {
   if (v) {
     nextTick(() => {
       init()
-      updatePosition()
+      updateMarker()
     })
+  } else {
+    if (marker) {
+      marker.remove()
+      marker = null
+    }
   }
 })
 
-// Listen to map movement
-let mapMoveHandler = null
 watch(() => props.mapInstance, (map) => {
-  if (map) {
-    if (mapMoveHandler) map.off('move', mapMoveHandler)
-    mapMoveHandler = () => updatePosition()
-    map.on('move', mapMoveHandler)
-    if (props.visible) {
-      nextTick(() => {
-        init()
-        updatePosition()
-      })
-    }
+  if (map && props.visible) {
+    nextTick(() => {
+      init()
+      updateMarker()
+    })
   }
 })
 
@@ -254,16 +257,13 @@ onMounted(() => {
   if (props.visible && props.mapInstance) {
     nextTick(() => {
       init()
-      updatePosition()
+      updateMarker()
     })
   }
 })
 
 onUnmounted(() => {
   cleanup()
-  if (props.mapInstance && mapMoveHandler) {
-    props.mapInstance.off('move', mapMoveHandler)
-  }
 })
 </script>
 
