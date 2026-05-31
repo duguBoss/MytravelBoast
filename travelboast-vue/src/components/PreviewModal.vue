@@ -62,9 +62,13 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import L from 'leaflet'
+import mapboxgl from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import html2canvas from 'html2canvas'
 import { saveVideoFile, generateFilename, getPresetForRatio, convertWebMToMP4 } from '../utils/videoRecorder.js'
+import { mapboxConfig } from '../constants/map.js'
+
+mapboxgl.accessToken = mapboxConfig.accessToken
 
 const props = defineProps({show:Boolean,mode:{default:'play'},points:Array,segments:Array,settings:Object,mapInstance:Object})
 const emit = defineEmits(['close','toast','update:settings'])
@@ -105,51 +109,94 @@ function setL(k,v){local.value[k]=v;emit('update:settings',{...props.settings,[k
 function applyTilt(){
   if(!pmap) return
   const tilt = local.value.tilt ?? 0
-  const container = pmap.getContainer()
-  if(!container) return
-  const pane = container.querySelector('.leaflet-map-pane')
-  const tilePane = container.querySelector('.leaflet-tile-pane')
-  if(pane) pane.style.transform = tilt>0 ? 'perspective(800px) rotateX('+tilt+'deg)' : ''
-  if(tilePane) tilePane.style.overflow = 'visible'
+  pmap.setPitch(tilt)
 }
 
-// ======== 真实地图 ========
+// ======== 真实地图 (Mapbox) ========
 async function init(retry=0){
   if(!props.points?.length) return
   clean()
   const el = mapBox.value
   if(!el){if(retry<5){setTimeout(()=>init(retry+1),200)};return}
-  // 确保容器有尺寸
   const rect = el.getBoundingClientRect()
   if(rect.width<10 || rect.height<10){if(retry<10){setTimeout(()=>init(retry+1),300)};return}
   try{
     const innerEl = globeInner.value || el
-    pmap = L.map(innerEl,{center:[props.points[0].lat,props.points[0].lng],zoom:5,zoomControl:false,attributionControl:false,minZoom:2,maxBounds:[[-90,-180],[90,180]]})
-    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,minZoom:2,subdomains:['a','b','c'],noWrap:true,bounds:[[-90,-180],[90,180]]}).addTo(pmap)
-    // 等待瓦片加载完成
-    await new Promise(resolve => {
-      if(tileLayer.isLoading()) tileLayer.on('load', resolve)
-      else resolve()
+    pmap = new mapboxgl.Map({
+      container: innerEl,
+      style: mapboxConfig.styles.satellite,
+      projection: 'globe',
+      zoom: 3,
+      center: [props.points[0].lng, props.points[0].lat],
+      pitch: local.value.tilt || 0,
+      bearing: 0,
+      attributionControl: false
     })
-    const coords = props.points.map(p=>[p.lat,p.lng])
-    rline = L.polyline(coords,{color:'#ff6b4a',weight:4,opacity:0.85}).addTo(pmap)
+    // Wait for style load to add fog and terrain
+    await new Promise(resolve => {
+      if(pmap.isStyleLoaded()) resolve()
+      else pmap.once('style.load', resolve)
+    })
+    pmap.setFog({
+      color: 'rgb(186, 210, 247)',
+      'high-color': 'rgb(36, 92, 223)',
+      'horizon-blend': 0.02,
+      'space-color': 'rgb(11, 11, 25)',
+      'star-intensity': 0.6
+    })
+    pmap.addSource('mapbox-dem', {
+      type: 'raster-dem',
+      url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+      tileSize: 512
+    })
+    pmap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 })
+
+    // Add route line
+    const coords = props.points.map(p=>[p.lng,p.lat])
+    pmap.addSource('route', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates: coords }
+      }
+    })
+    pmap.addLayer({
+      id: 'route-line',
+      type: 'line',
+      source: 'route',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#ff6b4a', 'line-width': 4, 'line-opacity': 0.85 }
+    })
+
+    // Add markers
     props.points.forEach((p,i)=>{
       const isS=i===0,isE=i===props.points.length-1
       const c = isS?'#4ade80':isE?'#f87171':'#fbbf24'
-      const m = L.circleMarker([p.lat,p.lng],{radius:10,color:'#fff',weight:2.5,fillColor:c,fillOpacity:1}).addTo(pmap)
       const lb = isS?'A':isE?'B':String(i)
-      L.tooltip({permanent:true,direction:'center',className:'pl',opacity:1}).setLatLng([p.lat,p.lng]).setContent('<b style="color:#fff;font-size:13px">'+lb+'</b>').addTo(pmap)
+      const el = document.createElement('div')
+      el.innerHTML = `<div style="width:20px;height:20px;border-radius:50%;background:${c};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:bold;">${lb}</div>`
+      const m = new mapboxgl.Marker({ element: el.firstElementChild }).setLngLat([p.lng,p.lat]).addTo(pmap)
       markers.push(m)
     })
+
+    // Add vehicle marker
     const icon = props.segments?.[0]?.vehicle?.icon||'🚗'
-    const divIcon = L.divIcon({html:'<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">'+icon+'</div>',iconSize:[32,32],iconAnchor:[16,16],className:'vm'})
-    vmarker = L.marker([props.points[0].lat,props.points[0].lng],{icon:divIcon}).addTo(pmap)
-    pmap.fitBounds(coords,{padding:[50,50]})
-    applyTilt()
+    const vel = document.createElement('div')
+    vel.innerHTML = `<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">${icon}</div>`
+    vmarker = new mapboxgl.Marker({ element: vel.firstElementChild }).setLngLat([props.points[0].lng,props.points[0].lat]).addTo(pmap)
+
+    // Fit bounds
+    const lngs = props.points.map(p=>p.lng)
+    const lats = props.points.map(p=>p.lat)
+    pmap.fitBounds(
+      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+      { padding: 50, duration: 0 }
+    )
     pmap.on('zoomend', updatePGlobe)
     updatePGlobe()
     await nextTick()
-    pmap.invalidateSize()
+    pmap.resize()
     ready.value = true
   }catch(e){console.error(e);emit('toast','地图加载失败')}
 }
@@ -175,28 +222,34 @@ function ei(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
 function getRouteZoom(){
   const pts=props.points
   if(pts.length<2) return 5
-  const group = L.latLngBounds(pts.map(p=>[p.lat,p.lng]))
-  const ne = group.getNorthEast(), sw = group.getSouthWest()
-  const center = [(ne.lat+sw.lat)/2, (ne.lng+sw.lng)/2]
+  const lngs = pts.map(p=>p.lng)
+  const lats = pts.map(p=>p.lat)
+  const sw = [Math.min(...lngs), Math.min(...lats)]
+  const ne = [Math.max(...lngs), Math.max(...lats)]
+  const center = [(ne[0]+sw[0])/2, (ne[1]+sw[1])/2]
   const scale = local.value.zoomScale ?? 0.33
-  const padded = L.latLngBounds(
-    [center[0]-(ne.lat-sw.lat)*scale, center[1]-(ne.lng-sw.lng)*scale],
-    [center[0]+(ne.lat-sw.lat)*scale, center[1]+(ne.lng-sw.lng)*scale]
-  )
-  return pmap.getBoundsZoom(padded, false)
+  const padded = [
+    [center[0]-(ne[0]-sw[0])*scale, center[1]-(ne[1]-sw[1])*scale],
+    [center[0]+(ne[0]-sw[0])*scale, center[1]+(ne[1]-sw[1])*scale]
+  ]
+  // Approximate zoom calculation
+  const latDiff = padded[1][1] - padded[0][1]
+  const zoom = Math.log2(360 / latDiff)
+  return Math.min(Math.max(zoom, 2), 16)
 }
 
 function getCam(t){
   const pts=props.points, s=pts[0], e=pts[pts.length-1], v=vehAt(t)
   const routeZoom = getRouteZoom()
   const closeZoom = Math.min(routeZoom + 2, 16)
-  let lat,lng,z
-  if(t<0.08){const p=ease(t/0.08);lat=s.lat;lng=s.lng;z=closeZoom-p*(closeZoom-routeZoom)}
-  else if(t<0.2){const p=ei((t-0.08)/0.12);lat=s.lat+(v.lat-s.lat)*p;lng=s.lng+(v.lng-s.lng)*p;z=routeZoom+(closeZoom-routeZoom)*(1-p)}
-  else if(t<0.8){const ah=vehAt(Math.min(t+0.05,1));lat=v.lat*0.5+ah.lat*0.5;lng=v.lng*0.5+ah.lng*0.5;z=routeZoom}
-  else if(t<0.94){const p=ei((t-0.8)/0.14);lat=v.lat+(e.lat-v.lat)*p;lng=v.lng+(e.lng-v.lng)*p;z=routeZoom+(closeZoom-routeZoom)*p}
-  else{const p=ei((t-0.94)/0.06);lat=e.lat;lng=e.lng;z=closeZoom-p*(closeZoom-routeZoom)}
-  return{lat,lng,z}
+  let lat,lng,z,pitch
+  const basePitch = local.value.tilt || 0
+  if(t<0.08){const p=ease(t/0.08);lat=s.lat;lng=s.lng;z=closeZoom-p*(closeZoom-routeZoom);pitch=basePitch}
+  else if(t<0.2){const p=ei((t-0.08)/0.12);lat=s.lat+(v.lat-s.lat)*p;lng=s.lng+(v.lng-s.lng)*p;z=routeZoom+(closeZoom-routeZoom)*(1-p);pitch=basePitch+10*p}
+  else if(t<0.8){const ah=vehAt(Math.min(t+0.05,1));lat=v.lat*0.5+ah.lat*0.5;lng=v.lng*0.5+ah.lng*0.5;z=routeZoom;pitch=basePitch+10}
+  else if(t<0.94){const p=ei((t-0.8)/0.14);lat=v.lat+(e.lat-v.lat)*p;lng=v.lng+(e.lng-v.lng)*p;z=routeZoom+(closeZoom-routeZoom)*p;pitch=basePitch+10*(1-p)}
+  else{const p=ei((t-0.94)/0.06);lat=e.lat;lng=e.lng;z=closeZoom-p*(closeZoom-routeZoom);pitch=basePitch}
+  return{lat,lng,z,pitch}
 }
 
 function vehAt(t){
@@ -215,10 +268,16 @@ function dst(a,b){const R=6371,dL=(b.lat-a.lat)*Math.PI/180,dG=(b.lng-a.lng)*Mat
 function startPlay(){if(isRecording.value||isPlaying.value||!ready.value)return;isPlaying.value=true;a0=performance.now();ad=(local.value.vd||15)*1000;an()}
 function an(){
   const el=performance.now()-a0,t=Math.min(el/ad,1);pct.value=t*100
-  if(vmarker){const vp=vehAt(t);vmarker.setLatLng([vp.lat,vp.lng]);const c=getCam(t);pmap.setView([c.lat,c.lng],c.z,{animate:false});updatePGlobe()}
+  if(vmarker&&pmap){
+    const vp=vehAt(t)
+    vmarker.setLngLat([vp.lng,vp.lat])
+    const c=getCam(t)
+    pmap.jumpTo({ center: [c.lng, c.lat], zoom: c.z, pitch: c.pitch })
+    updatePGlobe()
+  }
   if(t<1)af=requestAnimationFrame(an);else{isPlaying.value=false;if(isRecording.value)stopRec()}
 }
-function stopPlay(){if(af){cancelAnimationFrame(af);af=null}isPlaying.value=false;if(vmarker&&props.points?.length)vmarker.setLatLng([props.points[0].lat,props.points[0].lng])}
+function stopPlay(){if(af){cancelAnimationFrame(af);af=null}isPlaying.value=false;if(vmarker&&props.points?.length)vmarker.setLngLat([props.points[0].lng,props.points[0].lat])}
 
 // ======== 录制 ========
 function toggleRec(){isRecording.value?stopRec():startRec()}
