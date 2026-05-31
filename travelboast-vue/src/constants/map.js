@@ -143,23 +143,22 @@ export const mapStyles = {
   }
 };
 
-// Legacy Leaflet tile URLs (kept for fallback reference)
 export const tileUrls = {
-  voyager: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  voyager: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
   satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  minimal: 'https://{s}.tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png'
+  minimal: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}'
 };
 
 export const tileSubdomains = {
-  voyager: ['a','b','c'],
+  voyager: ['1','2','3','4'],
   dark: ['a','b','c','d'],
-  minimal: ['a','b','c']
+  minimal: ['1','2','3','4']
 };
 
 export const mapAttributions = {
-  voyager: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  voyager: '&copy; 高德地图 / OSM / CARTO',
   dark: '&copy; OSM &copy; CARTO',
   satellite: '&copy; Esri',
-  minimal: '&copy; OSM'
+  minimal: '&copy; 高德地图 / OSM / CARTO'
 };

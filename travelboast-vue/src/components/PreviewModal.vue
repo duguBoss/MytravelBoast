@@ -9,11 +9,7 @@
       <div class="content">
         <div class="map-area">
           <!-- 真实地图，不走形 -->
-          <div class="map-box" ref="mapBox" :class="'shape-'+shape">
-            <div class="globe-wrap">
-              <div class="globe-inner" ref="globeInner" :style="pGlobeStyle"></div>
-            </div>
-          </div>
+          <div class="map-box" ref="mapBox" :class="'shape-'+shape"></div>
           <div class="ctrl-bar">
             <button class="btn" :class="{on:shape==='vertical'}" @click="shape='vertical'">9:16</button>
             <button class="btn" :class="{on:shape==='horizontal'}" @click="shape='horizontal'">16:9</button>
@@ -51,7 +47,7 @@
           </div>
           <div v-if="isRecording" class="pr">
             <div class="pb"><div class="pf" :style="{width:pct+'%'}"></div></div>
-            <div class="pt">{{pct|0}}%·{{fi}}</div>
+            <div class="pt">{{pct.toFixed(0)}}%·{{fi}}</div>
           </div>
           <div v-if="isExporting" class="ex"><div class="ed"></div>{{es}}</div>
         </div>
@@ -62,32 +58,24 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import maplibregl from 'maplibre-gl'
-import 'maplibre-gl/dist/maplibre-gl.css'
-// 移除 html2canvas 依赖，直接使用 canvas 捕获
-import { saveVideoFile, generateFilename, getPresetForRatio, convertWebMToMP4 } from '../utils/videoRecorder.js'
-import { mapStyles } from '../constants/map.js'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import html2canvas from 'html2canvas'
+import { saveVideoFile, generateFilename, getPresetForRatio, convertWebMToMP4, recordVideo } from '../utils/videoRecorder.js'
+import { drawFrame, getCanvasPoints } from '../utils/canvasAnimation.js'
+import { tileUrls, tileSubdomains, mapAttributions } from '../constants/map.js'
 
 const props = defineProps({show:Boolean,mode:{default:'play'},points:Array,segments:Array,settings:Object,mapInstance:Object})
 const emit = defineEmits(['close','toast','update:settings'])
 
 const ql = {draft:'草稿',standard:'标准',high:'高清'}
-const local = ref({vd:15,vs:0.65,vq:'standard',wm:true,tilt:30,zoomScale:0.33})
+const local = ref({vd:15,vs:0.65,vq:'standard',wm:true,tilt:55,zoomScale:0.33})
 
 const shape = ref('vertical')
 const isPlaying = ref(false), isRecording = ref(false), isExporting = ref(false)
 const ready = ref(false)
 const pct = ref(0), fi = ref(''), es = ref('')
 const mapBox = ref(null)
-const globeInner = ref(null)
-const pGlobeScale = ref(100)
-const pGlobeRound = ref(0)
-
-const pGlobeStyle = computed(()=>({
-  width: pGlobeScale.value+'%',
-  height: pGlobeScale.value+'%',
-  borderRadius: pGlobeRound.value+'%'
-}))
 
 const ratioBadge = computed(()=>{
   const r = shape.value
@@ -100,17 +88,11 @@ let af = null, a0 = 0, ad = 0
 // 同步 shape → settings.ratio
 watch(shape, v => emit('update:settings',{...props.settings,ratio:v}))
 watch(()=>props.show, async v=>{ if(v){await nextTick();setTimeout(init,300)}else{clean()} })
-watch(()=>props.settings, v=>{if(v){local.value.vd=v.videoDuration??15;local.value.vs=v.vehicleScale??0.65;local.value.tilt=v.tilt??30;local.value.zoomScale=v.zoomScale??0.33}},{immediate:true})
+watch(()=>props.settings, v=>{if(v){local.value.vd=v.videoDuration??15;local.value.vs=v.vehicleScale??0.65;local.value.tilt=v.tilt??55;local.value.zoomScale=v.zoomScale??0.33}},{immediate:true})
 
-function setL(k,v){local.value[k]=v;emit('update:settings',{...props.settings,[k]:v});if(k==='tilt')applyTilt()}
+function setL(k,v){local.value[k]=v;emit('update:settings',{...props.settings,[k]:v})}
 
-function applyTilt(){
-  if(!pmap) return
-  const tilt = local.value.tilt ?? 0
-  pmap.setPitch(tilt)
-}
-
-// ======== 真实地图 (Mapbox) ========
+// ======== 真实地图 (Leaflet) ========
 async function init(retry=0){
   if(!props.points?.length) return
   clean()
@@ -119,86 +101,67 @@ async function init(retry=0){
   const rect = el.getBoundingClientRect()
   if(rect.width<10 || rect.height<10){if(retry<10){setTimeout(()=>init(retry+1),300)};return}
   try{
-    const innerEl = globeInner.value || el
-    pmap = new maplibregl.Map({
-      container: innerEl,
-      style: mapStyles.satellite,
-      projection: { name: 'globe' },
-      zoom: 3,
-      center: [props.points[0].lng, props.points[0].lat],
-      pitch: local.value.tilt || 0,
-      bearing: 0,
-      attributionControl: false,
-      preserveDrawingBuffer: true
-    })
-    // Wait for style load
-    await new Promise(resolve => {
-      if(pmap.isStyleLoaded()) resolve()
-      else pmap.once('style.load', resolve)
-    })
+    pmap = L.map(el, { zoomControl: false }).setView([props.points[0].lat, props.points[0].lng], 4)
+    
+    const style = props.settings?.mapStyle || 'voyager'
+    const url = tileUrls[style]
+    const subdomains = tileSubdomains[style] || []
+    const attribution = mapAttributions[style] || ''
+    
+    tileLayer = L.tileLayer(url, {
+      attribution,
+      maxZoom: 19,
+      subdomains
+    }).addTo(pmap)
 
     // Add route line
-    const coords = props.points.map(p=>[p.lng,p.lat])
-    pmap.addSource('route', {
-      type: 'geojson',
-      data: {
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'LineString', coordinates: coords }
-      }
-    })
-    pmap.addLayer({
-      id: 'route-line',
-      type: 'line',
-      source: 'route',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#ff6b4a', 'line-width': 4, 'line-opacity': 0.85 }
-    })
+    const coords = props.points.map(p=>[p.lat,p.lng])
+    rline = L.polyline(coords, {
+      color: '#ff6b4a',
+      weight: 4,
+      opacity: 0.85,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(pmap)
 
     // Add markers
     props.points.forEach((p,i)=>{
       const isS=i===0,isE=i===props.points.length-1
-      const c = isS?'#4ade80':isE?'#f87171':'#fbbf24'
+      const c = isS?'#34c759':isE?'#ff6b4a':'#6b7089'
       const lb = isS?'A':isE?'B':String(i)
       const el = document.createElement('div')
       el.innerHTML = `<div style="width:20px;height:20px;border-radius:50%;background:${c};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:bold;">${lb}</div>`
-      const m = new maplibregl.Marker({ element: el.firstElementChild }).setLngLat([p.lng,p.lat]).addTo(pmap)
+      const icon = L.divIcon({ html: el.innerHTML, className: '', iconSize: [20, 20], iconAnchor: [10, 10] })
+      const m = L.marker([p.lat, p.lng], { icon }).addTo(pmap)
       markers.push(m)
     })
 
     // Add vehicle marker
     const icon = props.segments?.[0]?.vehicle?.icon||'🚗'
-    const vel = document.createElement('div')
-    vel.innerHTML = `<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">${icon}</div>`
-    vmarker = new maplibregl.Marker({ element: vel.firstElementChild }).setLngLat([props.points[0].lng,props.points[0].lat]).addTo(pmap)
+    const html = `<div class="moving-vehicle" style="font-size: 28px; line-height: 1;">${icon}</div>`
+    const vIcon = L.divIcon({ html, className: '', iconSize: [28, 28], iconAnchor: [14, 14] })
+    vmarker = L.marker([props.points[0].lat, props.points[0].lng], { icon: vIcon, zIndexOffset: 1000 }).addTo(pmap)
 
     // Fit bounds
-    const lngs = props.points.map(p=>p.lng)
-    const lats = props.points.map(p=>p.lat)
-    pmap.fitBounds(
-      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 50, duration: 0 }
-    )
-    pmap.on('zoomend', updatePGlobe)
-    updatePGlobe()
+    const latlngs = props.points.map(p=>[p.lat,p.lng])
+    pmap.fitBounds(latlngs, { padding: [50, 50], animate: false })
+    
     await nextTick()
-    pmap.resize()
+    pmap.invalidateSize()
     ready.value = true
   }catch(e){console.error(e);emit('toast','地图加载失败')}
 }
-function clean(){if(pmap){pmap.remove();pmap=null}rline=null;vmarker=null;markers=[];ready.value=false}
 
-function updatePGlobe(){
-  if(!pmap) return
-  const z=pmap.getZoom(), threshold=3
-  if(z<=threshold){
-    const progress=1-(z-1)/(threshold-1)
-    pGlobeScale.value=100-progress*40
-    pGlobeRound.value=progress*50
-  }else{
-    pGlobeScale.value=100
-    pGlobeRound.value=0
+function clean(){
+  if(pmap){
+    pmap.remove()
+    pmap=null
   }
+  tileLayer=null
+  rline=null
+  vmarker=null
+  markers=[]
+  ready.value=false
 }
 
 // ======== 运镜 ========
@@ -208,18 +171,9 @@ function ei(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
 function getRouteZoom(){
   const pts=props.points
   if(pts.length<2) return 5
-  const lngs = pts.map(p=>p.lng)
-  const lats = pts.map(p=>p.lat)
-  const sw = [Math.min(...lngs), Math.min(...lats)]
-  const ne = [Math.max(...lngs), Math.max(...lats)]
-  const center = [(ne[0]+sw[0])/2, (ne[1]+sw[1])/2]
-  const scale = local.value.zoomScale ?? 0.33
-  const padded = [
-    [center[0]-(ne[0]-sw[0])*scale, center[1]-(ne[1]-sw[1])*scale],
-    [center[0]+(ne[0]-sw[0])*scale, center[1]+(ne[1]-sw[1])*scale]
-  ]
-  // Approximate zoom calculation
-  const latDiff = padded[1][1] - padded[0][1]
+  const sw = [Math.min(...pts.map(p=>p.lat)), Math.min(...pts.map(p=>p.lng))]
+  const ne = [Math.max(...pts.map(p=>p.lat)), Math.max(...pts.map(p=>p.lng))]
+  const latDiff = ne[0] - sw[0] || 0.001
   const zoom = Math.log2(360 / latDiff)
   return Math.min(Math.max(zoom, 2), 16)
 }
@@ -228,14 +182,13 @@ function getCam(t){
   const pts=props.points, s=pts[0], e=pts[pts.length-1], v=vehAt(t)
   const routeZoom = getRouteZoom()
   const closeZoom = Math.min(routeZoom + 2, 16)
-  let lat,lng,z,pitch
-  const basePitch = local.value.tilt || 0
-  if(t<0.08){const p=ease(t/0.08);lat=s.lat;lng=s.lng;z=closeZoom-p*(closeZoom-routeZoom);pitch=basePitch}
-  else if(t<0.2){const p=ei((t-0.08)/0.12);lat=s.lat+(v.lat-s.lat)*p;lng=s.lng+(v.lng-s.lng)*p;z=routeZoom+(closeZoom-routeZoom)*(1-p);pitch=basePitch+10*p}
-  else if(t<0.8){const ah=vehAt(Math.min(t+0.05,1));lat=v.lat*0.5+ah.lat*0.5;lng=v.lng*0.5+ah.lng*0.5;z=routeZoom;pitch=basePitch+10}
-  else if(t<0.94){const p=ei((t-0.8)/0.14);lat=v.lat+(e.lat-v.lat)*p;lng=v.lng+(e.lng-v.lng)*p;z=routeZoom+(closeZoom-routeZoom)*p;pitch=basePitch+10*(1-p)}
-  else{const p=ei((t-0.94)/0.06);lat=e.lat;lng=e.lng;z=closeZoom-p*(closeZoom-routeZoom);pitch=basePitch}
-  return{lat,lng,z,pitch}
+  let lat,lng,z
+  if(t<0.08){const p=ease(t/0.08);lat=s.lat;lng=s.lng;z=closeZoom-p*(closeZoom-routeZoom)}
+  else if(t<0.2){const p=ei((t-0.08)/0.12);lat=s.lat+(v.lat-s.lat)*p;lng=s.lng+(v.lng-s.lng)*p;z=routeZoom+(closeZoom-routeZoom)*(1-p)}
+  else if(t<0.8){const ah=vehAt(Math.min(t+0.05,1));lat=v.lat*0.5+ah.lat*0.5;lng=v.lng*0.5+ah.lng*0.5;z=routeZoom}
+  else if(t<0.94){const p=ei((t-0.8)/0.14);lat=v.lat+(e.lat-v.lat)*p;lng=v.lng+(e.lng-v.lng)*p;z=routeZoom+(closeZoom-routeZoom)*p}
+  else{const p=ei((t-0.94)/0.06);lat=e.lat;lng=e.lng;z=closeZoom-p*(closeZoom-routeZoom)}
+  return{lat,lng,z}
 }
 
 function vehAt(t){
@@ -256,66 +209,112 @@ function an(){
   const el=performance.now()-a0,t=Math.min(el/ad,1);pct.value=t*100;fi.value=Math.round(t*100)+'%'
   if(vmarker&&pmap){
     const vp=vehAt(t)
-    vmarker.setLngLat([vp.lng,vp.lat])
+    vmarker.setLatLng([vp.lat,vp.lng])
     const c=getCam(t)
-    pmap.jumpTo({ center: [c.lng, c.lat], zoom: c.z, pitch: c.pitch })
-    updatePGlobe()
+    pmap.setView([c.lat, c.lng], c.z, { animate: false })
   }
   if(t<1)af=requestAnimationFrame(an);else{isPlaying.value=false;if(isRecording.value)stopRec()}
 }
-function stopPlay(){if(af){cancelAnimationFrame(af);af=null}isPlaying.value=false;if(vmarker&&props.points?.length)vmarker.setLngLat([props.points[0].lng,props.points[0].lat])}
+function stopPlay(){if(af){cancelAnimationFrame(af);af=null}isPlaying.value=false;if(vmarker&&props.points?.length)vmarker.setLatLng([props.points[0].lat,props.points[0].lng])}
 
 // ======== 录制 ========
 function toggleRec(){isRecording.value?stopRec():startRec()}
+
+async function getMapScreenshot() {
+  if (vmarker) {
+    pmap.removeLayer(vmarker)
+  }
+  
+  await new Promise(resolve => setTimeout(resolve, 350))
+  
+  const mapEl = mapBox.value
+  const canvas = await html2canvas(mapEl, {
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: '#0a0e14'
+  })
+  
+  if (vmarker && pmap) {
+    vmarker.addTo(pmap)
+  }
+  
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.src = canvas.toDataURL('image/png')
+  })
+}
+
 async function startRec(){
   if(!ready.value||!pmap)return
-  isRecording.value=true;pct.value=0;emit('toast','录制中...')
+  isRecording.value=true;pct.value=0;emit('toast','准备录制...')
   const dur=(local.value.vd||15)*1000,qual=local.value.vq||'standard'
   try{
-    isExporting.value=true;es.value='录制中...'
-    const canvas = pmap.getCanvas()
+    isExporting.value=true;es.value='截取地图...'
+    
+    // Take map screenshot for static background
+    const bgImage = await getMapScreenshot()
+    
+    es.value='录制中...'
+    
     const preset=getPresetForRatio(props.settings?.ratio||'vertical',qual)
-    const stream = canvas.captureStream(preset.fps)
-    const rec = new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9',videoBitsPerSecond:preset.bitrate*1000})
-    const chunks = []
-    rec.ondataavailable = e=>{if(e.data.size)chunks.push(e.data)}
     
-    // 开始动画和录制
-    a0=performance.now();ad=dur;isPlaying.value=true;an()
-    rec.start(100)
+    // Setup offscreen canvas
+    const recCanvas = document.createElement('canvas')
+    recCanvas.width = preset.width
+    recCanvas.height = preset.height
     
-    // 等待动画完成
-    await new Promise((resolve) => {
-      const checkComplete = () => {
-        if (!isPlaying.value) {
-          resolve()
-        } else {
-          setTimeout(checkComplete, 50)
-        }
+    const canvasPoints = getCanvasPoints(props.points, preset.width, preset.height)
+    
+    const abortCtrl = new AbortController()
+    
+    // Record canvas stream while drawing frame by frame
+    const recordResult = await recordVideo(recCanvas, (ctx, w, h, t) => {
+      drawFrame(ctx, w, h, canvasPoints, props.segments, props.settings, t, bgImage)
+    }, {
+      duration: dur,
+      fps: preset.fps,
+      bitrate: preset.bitrate,
+      signal: abortCtrl.signal,
+      onProgress: (p) => {
+        pct.value = p
+        fi.value = Math.round(p) + '%'
       }
-      setTimeout(resolve, dur + 500) // 超时保护
-      checkComplete()
     })
     
-    stopPlay()
-    rec.stop()
+    const blob = recordResult.blob
+    es.value='转MP4...'
+    let fb = blob, fmt = 'webm'
+    try {
+      fb = await convertWebMToMP4(blob, p => {
+        es.value = '转换' + Math.round(p) + '%'
+      })
+      fmt = 'mp4'
+    } catch(e) {
+      console.warn('FFmpeg convert failed, falling back to webm:', e)
+    }
     
-    // 等待录制数据完成
-    await new Promise(resolve => {
-      rec.onstop = resolve
-    })
-    
-    const blob = new Blob(chunks,{type:'video/webm'})
-    es.value='转MP4...';let fb=blob,fmt='webm'
-    try{fb=await convertWebMToMP4(blob,p=>{es.value='转换'+Math.round(p)+'%'});fmt='mp4'}catch(e){console.warn(e)}
     es.value='保存...'
-    const fn = generateFilename({ratio:props.settings?.ratio||'vertical',quality:qual,points:props.points,format:fmt})
-    const sr = await saveVideoFile(fb,{suggestedName:fn,format:fmt})
-    if(sr.success)emit('toast','视频已存！'+(fb.size/1024/1024).toFixed(2)+'MB')
-    else emit('toast',sr.aborted?'已取消':'失败:'+(sr.error||'?'))
-  }catch(e){console.error(e);emit('toast','录制失败:'+e.message)}
-  finally{isRecording.value=false;isPlaying.value=false;isExporting.value=false;es.value=''}
+    const fn = generateFilename({
+      ratio: props.settings?.ratio||'vertical',
+      quality: qual,
+      points: props.points,
+      format: fmt
+    })
+    const sr = await saveVideoFile(fb, { suggestedName: fn, format: fmt })
+    if(sr.success) emit('toast', '视频已存！' + (fb.size/1024/1024).toFixed(2) + 'MB')
+    else emit('toast', sr.aborted ? '已取消' : '失败:' + (sr.error||'?'))
+  } catch(e) {
+    console.error('Recording failed:', e)
+    emit('toast', '录制失败:' + e.message)
+  } finally {
+    isRecording.value=false
+    isPlaying.value=false
+    isExporting.value=false
+    es.value=''
+  }
 }
+
 function stopRec(){isRecording.value=false}
 
 function close(){
