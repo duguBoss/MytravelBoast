@@ -280,13 +280,16 @@ function fitBounds() {
 }
 
 function initMap() {
-  map = L.map('map', { zoomControl: false }).setView([37.5, 128], 4)
+  map = L.map('map', { zoomControl: false, minZoom: 2, maxBounds: [[-90,-180],[90,180]] }).setView([37.5, 128], 4)
   L.control.zoom({ position: 'bottomright' }).addTo(map)
   mapTiles = L.tileLayer(tileUrls.voyager, {
     attribution: mapAttributions.voyager,
     maxZoom: 19,
+    minZoom: 2,
     subdomains: tileSubdomains.voyager,
-    crossOrigin: true
+    crossOrigin: true,
+    noWrap: true,
+    bounds: [[-90,-180],[90,180]]
   }).addTo(map)
 
   map.on('click', (e) => {
@@ -475,7 +478,11 @@ onMounted(() => {
 <template>
   <div class="map-3d-wrapper">
     <div ref="mapInner" class="map-3d-inner" :class="{ tilted: settings.view3D }">
-      <div id="map"></div>
+      <div class="globe-wrap">
+        <div class="globe-inner">
+          <div id="map"></div>
+        </div>
+      </div>
       <ThreeVehicleOverlay
         :visible="use3DModel"
         :lat="vehicle3DPosition.lat"
