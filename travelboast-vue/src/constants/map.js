@@ -11,7 +11,41 @@ export const countryFlags = {
 // Using free tile sources instead of Mapbox proprietary tiles
 
 export const mapStyles = {
-  // OpenStreetMap standard style
+  // ESRI Satellite with AWS 3D Terrain (FREE
+  satellite: {
+    version: 8,
+    sources: {
+      esri: {
+        type: 'raster',
+        tiles: [
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+        ],
+        tileSize: 256,
+        attribution: 'Tiles &copy; Esri'
+      },
+      'aws-terrain': {
+        type: 'raster-dem',
+        tiles: [
+          'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'
+        ],
+        encoding: 'terrarium',
+        tileSize: 256
+      }
+    },
+    layers: [
+      {
+        id: 'satellite-layer',
+        type: 'raster',
+        source: 'esri'
+      }
+    ],
+    terrain: {
+      source: 'aws-terrain',
+      exaggeration: 1.5
+    },
+    sky: {}
+  },
+  // OpenStreetMap standard style with AWS terrain
   voyager: {
     version: 8,
     sources: {
@@ -20,11 +54,30 @@ export const mapStyles = {
         tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
         tileSize: 256,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      },
+      'aws-terrain': {
+        type: 'raster-dem',
+        tiles: [
+          'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'
+        ],
+        encoding: 'terrarium',
+        tileSize: 256
       }
     },
-    layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+    layers: [
+      {
+        id: 'osm-layer',
+        type: 'raster',
+        source: 'osm'
+      }
+    ],
+    terrain: {
+      source: 'aws-terrain',
+      exaggeration: 1.5
+    },
+    sky: {}
   },
-  // CartoDB Dark Matter (free)
+  // CartoDB Dark Matter with terrain (free)
   dark: {
     version: 8,
     sources: {
@@ -33,22 +86,28 @@ export const mapStyles = {
         tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'],
         tileSize: 256,
         attribution: '&copy; OSM &copy; CARTO'
+      },
+      'aws-terrain': {
+        type: 'raster-dem',
+        tiles: [
+          'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'
+        ],
+        encoding: 'terrarium',
+        tileSize: 256
       }
     },
-    layers: [{ id: 'carto-dark', type: 'raster', source: 'carto' }]
-  },
-  // ESRI Satellite (free for non-commercial, attribution required)
-  satellite: {
-    version: 8,
-    sources: {
-      esri: {
+    layers: [
+      {
+        id: 'carto-dark-layer',
         type: 'raster',
-        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-        tileSize: 256,
-        attribution: '&copy; Esri'
+        source: 'carto'
       }
+    ],
+    terrain: {
+      source: 'aws-terrain',
+      exaggeration: 1.5
     },
-    layers: [{ id: 'esri-sat', type: 'raster', source: 'esri' }]
+    sky: {}
   },
   // Minimal / Light
   minimal: {
@@ -59,9 +118,28 @@ export const mapStyles = {
         tiles: ['https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png'],
         tileSize: 256,
         attribution: '&copy; OSM'
+      },
+      'aws-terrain': {
+        type: 'raster-dem',
+        tiles: [
+          'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'
+        ],
+        encoding: 'terrarium',
+        tileSize: 256
       }
     },
-    layers: [{ id: 'osm-minimal', type: 'raster', source: 'osm' }]
+    layers: [
+      {
+        id: 'osm-minimal',
+        type: 'raster',
+        source: 'osm'
+      }
+    ],
+    terrain: {
+      source: 'aws-terrain',
+      exaggeration: 1.5
+    },
+    sky: {}
   }
 };
 

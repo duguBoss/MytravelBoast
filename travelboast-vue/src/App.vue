@@ -26,7 +26,7 @@ const points = reactive([
 const segments = reactive([{ vehicle: vehicles[0], distance: 0 }])
 const settings = reactive({
   ratio: 'vertical', speed: 2, size: 'medium',
-  mapStyle: 'voyager', showDistance: true,
+  mapStyle: 'satellite', showDistance: true,
   showFlags: false, use3D: true, showLabels: true,
   view3D: false, tilt: 30, rotation: 0,
   videoDuration: 15, vehicleScale: 0.65
@@ -320,22 +320,12 @@ function initMap() {
     center: [80, 30],
     pitch: 0,
     bearing: 0,
-    attributionControl: false
+    attributionControl: false,
+    preserveDrawingBuffer: true // 【核心: 允许 Canvas 被录制
   })
 
   // Add zoom control
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
-
-  // Configure atmosphere on style load (MapLibre free version)
-  map.on('style.load', () => {
-    map.setFog({
-      color: 'rgb(186, 210, 247)',
-      'high-color': 'rgb(36, 92, 223)',
-      'horizon-blend': 0.02,
-      'space-color': 'rgb(11, 11, 25)',
-      'star-intensity': 0.6
-    })
-  })
 
   map.on('click', (e) => {
     if (map._addingStop) return
@@ -392,15 +382,7 @@ watch(() => settings.mapStyle, (val) => {
   }
   const style = styleMap[val] || mapStyles.satellite
   map.setStyle(style)
-  // Re-apply fog after style change
   map.once('style.load', () => {
-    map.setFog({
-      color: 'rgb(186, 210, 247)',
-      'high-color': 'rgb(36, 92, 223)',
-      'horizon-blend': 0.02,
-      'space-color': 'rgb(11, 11, 25)',
-      'star-intensity': 0.6
-    })
     renderRoute()
   })
 })

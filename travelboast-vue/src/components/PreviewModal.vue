@@ -64,7 +64,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import html2canvas from 'html2canvas'
+// 移除 html2canvas 依赖，直接使用 canvas 捕获
 import { saveVideoFile, generateFilename, getPresetForRatio, convertWebMToMP4 } from '../utils/videoRecorder.js'
 import { mapStyles } from '../constants/map.js'
 
@@ -128,7 +128,8 @@ async function init(retry=0){
       center: [props.points[0].lng, props.points[0].lat],
       pitch: local.value.tilt || 0,
       bearing: 0,
-      attributionControl: false
+      attributionControl: false,
+      preserveDrawingBuffer: true
     })
     // Wait for style load
     await new Promise(resolve => {
@@ -252,7 +253,7 @@ function dst(a,b){const R=6371,dL=(b.lat-a.lat)*Math.PI/180,dG=(b.lng-a.lng)*Mat
 // ======== 动画 ========
 function startPlay(){if(isRecording.value||isPlaying.value||!ready.value)return;isPlaying.value=true;a0=performance.now();ad=(local.value.vd||15)*1000;an()}
 function an(){
-  const el=performance.now()-a0,t=Math.min(el/ad,1);pct.value=t*100
+  const el=performance.now()-a0,t=Math.min(el/ad,1);pct.value=t*100;fi.value=Math.round(t*100)+'%'
   if(vmarker&&pmap){
     const vp=vehAt(t)
     vmarker.setLngLat([vp.lng,vp.lat])
@@ -272,36 +273,38 @@ async function startRec(){
   const dur=(local.value.vd||15)*1000,qual=local.value.vq||'standard'
   try{
     isExporting.value=true;es.value='录制中...'
-    const mapEl = pmap.getContainer()
+    const canvas = pmap.getCanvas()
     const preset=getPresetForRatio(props.settings?.ratio||'vertical',qual)
-    const totalFrames=Math.round(dur/1000*preset.fps),intv=1000/preset.fps
-    const frames=[]
-    a0=performance.now();ad=dur;isPlaying.value=true;an()
-    for(let i=0;i<totalFrames;i++){
-      await new Promise(r=>setTimeout(r,intv*0.9))
-      pct.value=(i+1)/totalFrames*100;fi.value=(i+1)+'/'+totalFrames+'帧'
-      try{const c=await html2canvas(mapEl,{useCORS:true,allowTaint:true,logging:false,backgroundColor:null,scale:1});frames.push(c)}catch(e){console.error(e)}
-    }
-    stopPlay()
-    // 合成
-    es.value='合成中...'
-    const cvs = document.createElement('canvas')
-    cvs.width = mapEl.offsetWidth; cvs.height = mapEl.offsetHeight
-    const ctx = cvs.getContext('2d')
-    const stream = cvs.captureStream(preset.fps)
+    const stream = canvas.captureStream(preset.fps)
     const rec = new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9',videoBitsPerSecond:preset.bitrate*1000})
-    const chunks = []; rec.ondataavailable = e=>{if(e.data.size)chunks.push(e.data)}
-    rec.start()
-    let fi2 = 0
+    const chunks = []
+    rec.ondataavailable = e=>{if(e.data.size)chunks.push(e.data)}
+    
+    // 开始动画和录制
+    a0=performance.now();ad=dur;isPlaying.value=true;an()
+    rec.start(100)
+    
+    // 等待动画完成
+    await new Promise((resolve) => {
+      const checkComplete = () => {
+        if (!isPlaying.value) {
+          resolve()
+        } else {
+          setTimeout(checkComplete, 50)
+        }
+      }
+      setTimeout(resolve, dur + 500) // 超时保护
+      checkComplete()
+    })
+    
+    stopPlay()
+    rec.stop()
+    
+    // 等待录制数据完成
     await new Promise(resolve => {
       rec.onstop = resolve
-      const play = () => {
-        if(fi2>=frames.length){rec.stop();return}
-        ctx.drawImage(frames[fi2],0,0)
-        fi2++; setTimeout(play,intv)
-      }
-      play()
     })
+    
     const blob = new Blob(chunks,{type:'video/webm'})
     es.value='转MP4...';let fb=blob,fmt='webm'
     try{fb=await convertWebMToMP4(blob,p=>{es.value='转换'+Math.round(p)+'%'});fmt='mp4'}catch(e){console.warn(e)}
