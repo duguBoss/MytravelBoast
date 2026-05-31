@@ -124,25 +124,25 @@ html, body {
 .btn-icon { width: 36px; padding: 0; }
 .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
 
-/* Mapbox custom */
-.mapboxgl-control-container .mapboxgl-ctrl-group {
+/* MapLibre custom */
+.maplibregl-control-container .maplibregl-ctrl-group {
   border: none !important;
   box-shadow: var(--shadow-md) !important;
   border-radius: var(--radius-md) !important;
   overflow: hidden;
 }
-.mapboxgl-control-container .mapboxgl-ctrl-group button {
+.maplibregl-control-container .maplibregl-ctrl-group button {
   width: 32px !important; height: 32px !important;
   line-height: 32px !important;
   border: none !important;
   color: var(--fg) !important;
   font-size: 16px !important;
 }
-.mapboxgl-control-container .mapboxgl-ctrl-group button:hover { background: var(--bg) !important; }
-.mapboxgl-ctrl-attrib { font-size: 9px !important; opacity: 0.5; }
+.maplibregl-control-container .maplibregl-ctrl-group button:hover { background: var(--bg) !important; }
+.maplibregl-ctrl-attrib { font-size: 9px !important; opacity: 0.5; }
 
-/* Mapbox globe atmosphere */
-.mapboxgl-canvas-container canvas {
+/* MapLibre globe atmosphere */
+.maplibregl-canvas-container canvas {
   outline: none;
 }
 

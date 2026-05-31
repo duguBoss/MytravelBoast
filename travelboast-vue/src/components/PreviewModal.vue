@@ -62,13 +62,11 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
 import html2canvas from 'html2canvas'
 import { saveVideoFile, generateFilename, getPresetForRatio, convertWebMToMP4 } from '../utils/videoRecorder.js'
-import { mapboxConfig } from '../constants/map.js'
-
-mapboxgl.accessToken = mapboxConfig.accessToken
+import { mapStyles } from '../constants/map.js'
 
 const props = defineProps({show:Boolean,mode:{default:'play'},points:Array,segments:Array,settings:Object,mapInstance:Object})
 const emit = defineEmits(['close','toast','update:settings'])
@@ -122,34 +120,21 @@ async function init(retry=0){
   if(rect.width<10 || rect.height<10){if(retry<10){setTimeout(()=>init(retry+1),300)};return}
   try{
     const innerEl = globeInner.value || el
-    pmap = new mapboxgl.Map({
+    pmap = new maplibregl.Map({
       container: innerEl,
-      style: mapboxConfig.styles.satellite,
-      projection: 'globe',
+      style: mapStyles.satellite,
+      projection: { name: 'globe' },
       zoom: 3,
       center: [props.points[0].lng, props.points[0].lat],
       pitch: local.value.tilt || 0,
       bearing: 0,
       attributionControl: false
     })
-    // Wait for style load to add fog and terrain
+    // Wait for style load
     await new Promise(resolve => {
       if(pmap.isStyleLoaded()) resolve()
       else pmap.once('style.load', resolve)
     })
-    pmap.setFog({
-      color: 'rgb(186, 210, 247)',
-      'high-color': 'rgb(36, 92, 223)',
-      'horizon-blend': 0.02,
-      'space-color': 'rgb(11, 11, 25)',
-      'star-intensity': 0.6
-    })
-    pmap.addSource('mapbox-dem', {
-      type: 'raster-dem',
-      url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-      tileSize: 512
-    })
-    pmap.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 })
 
     // Add route line
     const coords = props.points.map(p=>[p.lng,p.lat])
@@ -176,7 +161,7 @@ async function init(retry=0){
       const lb = isS?'A':isE?'B':String(i)
       const el = document.createElement('div')
       el.innerHTML = `<div style="width:20px;height:20px;border-radius:50%;background:${c};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:bold;">${lb}</div>`
-      const m = new mapboxgl.Marker({ element: el.firstElementChild }).setLngLat([p.lng,p.lat]).addTo(pmap)
+      const m = new maplibregl.Marker({ element: el.firstElementChild }).setLngLat([p.lng,p.lat]).addTo(pmap)
       markers.push(m)
     })
 
@@ -184,7 +169,7 @@ async function init(retry=0){
     const icon = props.segments?.[0]?.vehicle?.icon||'🚗'
     const vel = document.createElement('div')
     vel.innerHTML = `<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">${icon}</div>`
-    vmarker = new mapboxgl.Marker({ element: vel.firstElementChild }).setLngLat([props.points[0].lng,props.points[0].lat]).addTo(pmap)
+    vmarker = new maplibregl.Marker({ element: vel.firstElementChild }).setLngLat([props.points[0].lng,props.points[0].lat]).addTo(pmap)
 
     // Fit bounds
     const lngs = props.points.map(p=>p.lng)

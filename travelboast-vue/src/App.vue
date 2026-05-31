@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
 import TopBar from './components/TopBar.vue'
 import RoutePanel from './components/RoutePanel.vue'
@@ -12,11 +12,9 @@ import Toast from './components/Toast.vue'
 import ThreeVehicleOverlay from './components/ThreeVehicleOverlay.vue'
 
 import { vehicles } from './constants/vehicles.js'
-import { countryFlags, mapboxConfig } from './constants/map.js'
+import { countryFlags, mapStyles } from './constants/map.js'
 import { uid, haversine, bearing, getFlag } from './utils/helpers.js'
 import { generateMultiSegmentPath, getVehiclePositionOnPath, calculatePathDistance } from './utils/pathGenerator.js'
-
-mapboxgl.accessToken = mapboxConfig.accessToken
 
 // State
 const selVehicle = ref(vehicles[0])
@@ -147,7 +145,7 @@ function renderRoute() {
       </div>`
     const el = document.createElement('div')
     el.innerHTML = html
-    const m = new mapboxgl.Marker({ element: el.firstElementChild, draggable: true })
+    const m = new maplibregl.Marker({ element: el.firstElementChild, draggable: true })
       .setLngLat([p.lng, p.lat])
       .addTo(map)
     m.on('dragend', () => {
@@ -219,7 +217,7 @@ function renderVehicle() {
   const el = document.createElement('div')
   el.innerHTML = `<div style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));transform:rotate(${angle}deg);">${v.icon}</div>`
   const latlngs = points.map(p => [p.lng, p.lat])
-  vehicleMarker = new mapboxgl.Marker({ element: el.firstElementChild })
+  vehicleMarker = new maplibregl.Marker({ element: el.firstElementChild })
     .setLngLat(latlngs[0])
     .addTo(map)
 }
@@ -290,7 +288,7 @@ function renderDistLabels() {
     const html = `<div class="distance-label">${segments[i].distance.toFixed(0)} km</div>`
     const el = document.createElement('div')
     el.innerHTML = html
-    const m = new mapboxgl.Marker({ element: el.firstElementChild })
+    const m = new maplibregl.Marker({ element: el.firstElementChild })
       .setLngLat([lng, lat])
       .addTo(map)
     distMarkers.value.push(m)
@@ -314,10 +312,10 @@ function fitBounds() {
 }
 
 function initMap() {
-  map = new mapboxgl.Map({
+  map = new maplibregl.Map({
     container: 'map',
-    style: mapboxConfig.styles.satellite,
-    projection: 'globe',
+    style: mapStyles.satellite,
+    projection: { name: 'globe' },
     zoom: 1.5,
     center: [80, 30],
     pitch: 0,
@@ -326,9 +324,9 @@ function initMap() {
   })
 
   // Add zoom control
-  map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right')
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
 
-  // Configure fog, terrain and atmosphere on style load
+  // Configure atmosphere on style load (MapLibre free version)
   map.on('style.load', () => {
     map.setFog({
       color: 'rgb(186, 210, 247)',
@@ -337,13 +335,6 @@ function initMap() {
       'space-color': 'rgb(11, 11, 25)',
       'star-intensity': 0.6
     })
-    // Add 3D terrain
-    map.addSource('mapbox-dem', {
-      type: 'raster-dem',
-      url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-      tileSize: 512
-    })
-    map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 })
   })
 
   map.on('click', (e) => {
@@ -394,14 +385,14 @@ watch(() => settings.rotation, updateMap3D)
 watch(() => settings.mapStyle, (val) => {
   if (!map) return
   const styleMap = {
-    voyager: mapboxConfig.styles.satellite,
-    dark: mapboxConfig.styles.dark,
-    satellite: mapboxConfig.styles.satellite,
-    minimal: mapboxConfig.styles.light
+    voyager: mapStyles.voyager,
+    dark: mapStyles.dark,
+    satellite: mapStyles.satellite,
+    minimal: mapStyles.minimal
   }
-  const style = styleMap[val] || mapboxConfig.styles.satellite
+  const style = styleMap[val] || mapStyles.satellite
   map.setStyle(style)
-  // Re-apply fog and terrain after style change
+  // Re-apply fog after style change
   map.once('style.load', () => {
     map.setFog({
       color: 'rgb(186, 210, 247)',
@@ -410,14 +401,6 @@ watch(() => settings.mapStyle, (val) => {
       'space-color': 'rgb(11, 11, 25)',
       'star-intensity': 0.6
     })
-    if (!map.getSource('mapbox-dem')) {
-      map.addSource('mapbox-dem', {
-        type: 'raster-dem',
-        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-        tileSize: 512
-      })
-    }
-    map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 })
     renderRoute()
   })
 })
