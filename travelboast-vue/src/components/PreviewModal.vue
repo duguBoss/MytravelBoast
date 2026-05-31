@@ -9,7 +9,11 @@
       <div class="content">
         <div class="map-area">
           <!-- 真实地图，不走形 -->
-          <div class="map-box" ref="mapBox" :class="'shape-'+shape"></div>
+          <div class="map-box" ref="mapBox" :class="'shape-'+shape">
+            <div class="globe-wrap">
+              <div class="globe-inner" ref="globeInner"></div>
+            </div>
+          </div>
           <div class="ctrl-bar">
             <button class="btn" :class="{on:shape==='vertical'}" @click="shape='vertical'">9:16</button>
             <button class="btn" :class="{on:shape==='horizontal'}" @click="shape='horizontal'">16:9</button>
@@ -73,6 +77,7 @@ const isPlaying = ref(false), isRecording = ref(false), isExporting = ref(false)
 const ready = ref(false)
 const pct = ref(0), fi = ref(''), es = ref('')
 const mapBox = ref(null)
+const globeInner = ref(null)
 
 const ratioBadge = computed(()=>{
   const r = shape.value
@@ -110,7 +115,8 @@ async function init(retry=0){
   const rect = el.getBoundingClientRect()
   if(rect.width<10 || rect.height<10){if(retry<10){setTimeout(()=>init(retry+1),300)};return}
   try{
-    pmap = L.map(el,{center:[props.points[0].lat,props.points[0].lng],zoom:5,zoomControl:false,attributionControl:false,minZoom:2,maxBounds:[[-90,-180],[90,180]]})
+    const innerEl = globeInner.value || el
+    pmap = L.map(innerEl,{center:[props.points[0].lat,props.points[0].lng],zoom:5,zoomControl:false,attributionControl:false,minZoom:2,maxBounds:[[-90,-180],[90,180]]})
     tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,minZoom:2,subdomains:['a','b','c'],noWrap:true,bounds:[[-90,-180],[90,180]]}).addTo(pmap)
     // 等待瓦片加载完成
     await new Promise(resolve => {
@@ -262,13 +268,15 @@ onBeforeUnmount(()=>{if(af)cancelAnimationFrame(af);clean()})
 @media(max-width:820px){.content{flex-direction:column}}
 
 .map-area{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;align-items:center}
-.map-box{border-radius:12px;overflow:visible;background:#0a0e14;position:relative;width:100%}
+.map-box{border-radius:12px;overflow:hidden;background:#0a0e14;position:relative;width:100%}
 .map-box.shape-vertical{max-width:380px;aspect-ratio:9/16;max-height:70vh}
 .map-box.shape-horizontal{aspect-ratio:16/9;max-height:60vh}
 .map-box.shape-square{max-width:500px;aspect-ratio:1/1;max-height:70vh}
-.map-box :deep(.leaflet-container){background:#0a0e14;height:100%!important;width:100%!important;min-height:300px;overflow:visible}
+.globe-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#1a2744 0%,#0a0e14 70%)}
+.globe-inner{width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 60px rgba(100,150,255,.15),inset 0 0 80px rgba(0,0,0,.4)}
+.map-box :deep(.leaflet-container){background:#0a0e14;height:100%!important;width:100%!important}
 .map-box :deep(.leaflet-map-pane){transform-origin:center center}
-.map-box :deep(.leaflet-tile-pane){overflow:visible}
+.map-box :deep(.leaflet-tile-pane){overflow:hidden}
 
 .ctrl-bar{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
 .btn{padding:8px 16px;border-radius:8px;border:1.5px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:rgba(255,255,255,.5);font-size:12px;font-weight:700;cursor:pointer;transition:.2s}
