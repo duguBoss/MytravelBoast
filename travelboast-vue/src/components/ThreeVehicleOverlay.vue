@@ -20,7 +20,7 @@ let isInitialized = false
 // Convert lat/lng to pixel position relative to map container
 function getPixelPosition(lat, lng) {
   if (!props.mapInstance) return { x: 0, y: 0 }
-  const point = props.mapInstance.latLngToContainerPoint([lat, lng])
+  const point = props.mapInstance.project([lng, lat])
   return { x: point.x, y: point.y }
 }
 
