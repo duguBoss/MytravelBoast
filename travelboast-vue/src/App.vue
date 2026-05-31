@@ -167,9 +167,9 @@ function renderRoute() {
 
 function renderRouteLine() {
   if (routeLine) {
-    map.getSource('route') && map.removeLayer('route-line-halo')
-    map.getSource('route') && map.removeLayer('route-line')
-    map.getSource('route') && map.removeSource('route')
+    if (map.getLayer('route-line-halo')) map.removeLayer('route-line-halo')
+    if (map.getLayer('route-line')) map.removeLayer('route-line')
+    if (map.getSource('route')) map.removeSource('route')
   }
   const coords = routePathPoints.length > 0
     ? routePathPoints.map(p => [p.lng, p.lat])
