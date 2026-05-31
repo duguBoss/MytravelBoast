@@ -642,6 +642,44 @@ function clearRoute() {
   showToast('路线已重置')
 }
 
+async function handleEditPoint(id, newName) {
+  const p = points.find(pt => pt.id === id)
+  if (!p) return
+  p.name = newName
+  
+  // Try geocoding via OpenStreetMap Nominatim (free, open, no key required)
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(newName)}`)
+    const data = await res.json()
+    if (data && data.length > 0) {
+      const lat = parseFloat(data[0].lat)
+      const lng = parseFloat(data[0].lon)
+      p.lat = lat
+      p.lng = lng
+      p.name = data[0].display_name.split(',')[0] // Use simple name like "Paris"
+      showToast(`已搜索并重新定位至：${p.name}`)
+      
+      updateDistances()
+      renderRoute()
+      
+      // Fly to the newly resolved location
+      if (map) {
+        map.flyTo({
+          center: [lng, lat],
+          zoom: 6,
+          duration: 1000,
+          essential: true
+        })
+      }
+    } else {
+      showToast(`已更新名称：${newName} (未找到精确坐标)`)
+    }
+  } catch (e) {
+    console.warn('Geocoding error:', e)
+    showToast(`已更新名称：${newName}`)
+  }
+}
+
 function selectRoutePoint(i) {
   selSegment.value = i
   const p = points[i]
@@ -745,6 +783,7 @@ onMounted(() => {
     @add="addStop"
     @clear="clearRoute"
     @setSegmentVehicle="setSegmentVehicle"
+    @editPoint="handleEditPoint"
   />
 
   <VehiclePanel

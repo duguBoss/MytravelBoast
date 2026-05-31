@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { countryFlags } from '../constants/map.js'
 import { getFlag } from '../utils/helpers.js'
 
@@ -10,7 +10,7 @@ const props = defineProps({
   totalDist: String,
   open: Boolean
 })
-const emit = defineEmits(['select', 'delete', 'add', 'clear', 'setSegmentVehicle'])
+const emit = defineEmits(['select', 'delete', 'add', 'clear', 'setSegmentVehicle', 'editPoint'])
 
 const groupedSegments = computed(() => {
   return props.points.map((p, i) => ({
@@ -21,6 +21,32 @@ const groupedSegments = computed(() => {
     flag: props.segments[i] ? getFlag(props.segments[i]?.vehicle?.name, countryFlags) : ''
   }))
 })
+
+// Inline editing and global search geocoding state
+const editingId = ref(null)
+const editName = ref('')
+const editInput = ref(null)
+
+function startEdit(point) {
+  editingId.value = point.id
+  editName.value = point.name
+  nextTick(() => {
+    const el = editInput.value
+    if (el) {
+      if (Array.isArray(el) && el[0]) el[0].focus()
+      else if (el.focus) el.focus()
+    }
+  })
+}
+
+function saveEdit(point) {
+  if (editingId.value !== point.id) return
+  const id = editingId.value
+  editingId.value = null
+  if (editName.value.trim() && editName.value.trim() !== point.name) {
+    emit('editPoint', id, editName.value.trim())
+  }
+}
 </script>
 
 <template>
@@ -56,7 +82,23 @@ const groupedSegments = computed(() => {
         </div>
         <div class="rp-item-content">
           <div class="rp-item-header">
-            <span class="rp-item-name">{{ item.point.name }}</span>
+            <div class="rp-item-name-wrap">
+              <input
+                v-if="editingId === item.point.id"
+                ref="editInput"
+                type="text"
+                v-model="editName"
+                class="rp-item-input"
+                placeholder="搜索或输入新地名..."
+                @blur="saveEdit(item.point)"
+                @keydown.enter="saveEdit(item.point)"
+                @click.stop
+              />
+              <span v-else class="rp-item-name" @click.stop="startEdit(item.point)" title="点击修改地名或搜索">
+                {{ item.point.name }}
+                <svg class="rp-edit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </span>
+            </div>
             <span v-if="item.flag" class="rp-item-flag">{{ item.flag }}</span>
           </div>
           <div v-if="item.segment" class="rp-item-segment">
@@ -329,5 +371,49 @@ const groupedSegments = computed(() => {
   .rp-item {
     padding: 8px 14px;
   }
+}
+
+.rp-item-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rp-item-input {
+  width: 100%;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1.5px solid var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  background: #ffffff;
+  color: var(--fg);
+}
+
+.rp-edit-icon {
+  width: 11px;
+  height: 11px;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.2s;
+  margin-left: 5px;
+  flex-shrink: 0;
+}
+
+.rp-item:hover .rp-edit-icon {
+  opacity: 0.7;
+}
+
+.rp-item-name {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
