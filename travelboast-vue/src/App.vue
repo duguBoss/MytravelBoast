@@ -503,17 +503,6 @@ onMounted(() => {
     initMapDragRotate()
   })
 })
-</script>=> {
-    if (dragRot) { dragRot = false; mapEl.style.cursor = '' }
-  })
-}
-
-onMounted(() => {
-  nextTick(() => {
-    initMap()
-    initMapDragRotate()
-  })
-})
 </script>
 
 <template>
