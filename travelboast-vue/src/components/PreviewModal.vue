@@ -4,7 +4,7 @@
       <button class="close-btn" @click="close">✕</button>
       <div class="header">
         <span class="title-text">{{ mode==='export'?'导出视频':'路线预览' }}</span>
-        <span class="badge">{{ ratioLabel }}</span>
+        <span class="badge">{{ ratioBadge }}</span>
       </div>
       <div class="content">
         <div class="map-area">
@@ -66,7 +66,7 @@ const ready = ref(false)
 const pct = ref(0), fi = ref(''), es = ref('')
 const mapBox = ref(null)
 
-const ratioLabel = computed(()=>{
+const ratioBadge = computed(()=>{
   const r = shape.value
   return r==='vertical'?'9:16 竖屏':r==='horizontal'?'16:9 横屏':'1:1 方形'
 })
@@ -219,9 +219,10 @@ onBeforeUnmount(()=>{if(af)cancelAnimationFrame(af);clean()})
 @media(max-width:820px){.content{flex-direction:column}}
 
 .map-area{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
-.map-box{flex:1;border-radius:12px;overflow:hidden;background:#0a0e14;position:relative}
-.map-box.shape-vertical{max-width:380px;margin:0 auto}
-.map-box.shape-square{max-width:500px;margin:0 auto}
+.map-box{flex:1;border-radius:12px;overflow:hidden;background:#0a0e14;position:relative;min-height:400px}
+.map-box.shape-vertical{max-width:380px;margin:0 auto;aspect-ratio:9/16}
+.map-box.shape-horizontal{aspect-ratio:16/9}
+.map-box.shape-square{max-width:500px;margin:0 auto;aspect-ratio:1/1}
 .map-box :deep(.leaflet-container){background:#0a0e14;height:100%!important;width:100%!important}
 
 .ctrl-bar{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
