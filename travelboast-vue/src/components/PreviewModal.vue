@@ -122,8 +122,8 @@ async function init(retry=0){
     const innerEl = globeInner.value || el
     pmap = new maplibregl.Map({
       container: innerEl,
-      style: mapStyles[props.settings?.mapStyle] || mapStyles.satellite,
-      projection: { type: 'globe' },
+      style: 'https://tiles.openfreemap.org/styles/bright', // Base vector map
+      projection: { type: 'globe' }, // Native 3D WebGL Globe Projection
       zoom: 3,
       center: [props.points[0].lng, props.points[0].lat],
       pitch: local.value.tilt || 0,
@@ -135,6 +135,126 @@ async function init(retry=0){
     pmap.on('style.load', () => {
       if (typeof pmap.setProjection === 'function') {
         pmap.setProjection({ type: 'globe' })
+      }
+
+      // 1. Add free custom DEM terrain mapping for physical heights
+      if (!pmap.getSource('aws-terrain')) {
+        pmap.addSource('aws-terrain', {
+          type: 'raster-dem',
+          tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+          encoding: 'terrarium',
+          tileSize: 256
+        })
+      }
+      pmap.setTerrain({ source: 'aws-terrain', exaggeration: 1.5 })
+
+      // 2. Add style sources for overlays
+      if (!pmap.getSource('carto-voyager')) {
+        pmap.addSource('carto-voyager', {
+          type: 'raster',
+          tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
+          tileSize: 256
+        })
+      }
+      if (!pmap.getSource('arcgis-satellite')) {
+        pmap.addSource('arcgis-satellite', {
+          type: 'raster',
+          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          tileSize: 256
+        })
+      }
+      if (!pmap.getSource('carto-dark')) {
+        pmap.addSource('carto-dark', {
+          type: 'raster',
+          tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'],
+          tileSize: 256
+        })
+      }
+      if (!pmap.getSource('osm-minimal')) {
+        pmap.addSource('osm-minimal', {
+          type: 'raster',
+          tiles: ['https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png'],
+          tileSize: 256
+        })
+      }
+
+      // 3. Add overlay layers with opacity based on active setting
+      const curStyle = props.settings?.mapStyle || 'satellite'
+      if (!pmap.getLayer('voyager-overlay')) {
+        pmap.addLayer({
+          id: 'voyager-overlay',
+          type: 'raster',
+          source: 'carto-voyager',
+          paint: {
+            'raster-opacity': curStyle === 'voyager' ? 1.0 : 0.0
+          }
+        })
+      }
+      if (!pmap.getLayer('satellite-overlay')) {
+        pmap.addLayer({
+          id: 'satellite-overlay',
+          type: 'raster',
+          source: 'arcgis-satellite',
+          paint: {
+            'raster-opacity': curStyle === 'satellite' ? 1.0 : 0.0
+          }
+        })
+      }
+      if (!pmap.getLayer('dark-overlay')) {
+        pmap.addLayer({
+          id: 'dark-overlay',
+          type: 'raster',
+          source: 'carto-dark',
+          paint: {
+            'raster-opacity': curStyle === 'dark' ? 1.0 : 0.0
+          }
+        })
+      }
+      if (!pmap.getLayer('minimal-overlay')) {
+        pmap.addLayer({
+          id: 'minimal-overlay',
+          type: 'raster',
+          source: 'osm-minimal',
+          paint: {
+            'raster-opacity': curStyle === 'minimal' ? 1.0 : 0.0
+          }
+        })
+      }
+
+      // 4. Extract building layers to render elegant 3D urban geometries as camera moves closer
+      if (!pmap.getLayer('3d-buildings')) {
+        pmap.addLayer({
+          'id': '3d-buildings',
+          'source': 'openmaptiles',
+          'source-layer': 'building',
+          'type': 'fill-extrusion',
+          'minzoom': 13.5,
+          'paint': {
+            'fill-extrusion-color': [
+              'interpolate',
+              ['linear'],
+              ['get', 'render_height'],
+              0, '#f3f4f6',
+              100, '#d1d5db',
+              300, '#9ca3af'
+            ],
+            'fill-extrusion-height': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              13.5, 0,
+              15.0, ['get', 'render_height']
+            ],
+            'fill-extrusion-base': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              13.5, 0,
+              15.0, ['get', 'render_min_height']
+            ],
+            'fill-extrusion-opacity': 0.88
+          }
+        })
       }
       
       // Starry space backing fog environment
@@ -162,12 +282,27 @@ async function init(retry=0){
         geometry: { type: 'LineString', coordinates: coords }
       }
     })
+
+    // Translucent glowing neon halo underlay
+    pmap.addLayer({
+      id: 'route-line-halo',
+      type: 'line',
+      source: 'route',
+      paint: {
+        'line-color': '#ff6b4a',
+        'line-width': 10,
+        'line-opacity': 0.35,
+        'line-blur': 4
+      }
+    })
+
+    // Sharp main route line on top
     pmap.addLayer({
       id: 'route-line',
       type: 'line',
       source: 'route',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#ff6b4a', 'line-width': 4, 'line-opacity': 0.85 }
+      paint: { 'line-color': '#ff6b4a', 'line-width': 4.5, 'line-opacity': 0.85 }
     })
 
     // Add markers

@@ -167,6 +167,7 @@ function renderRoute() {
 
 function renderRouteLine() {
   if (routeLine) {
+    map.getSource('route') && map.removeLayer('route-line-halo')
     map.getSource('route') && map.removeLayer('route-line')
     map.getSource('route') && map.removeSource('route')
   }
@@ -182,12 +183,31 @@ function renderRouteLine() {
       geometry: { type: 'LineString', coordinates: coords }
     }
   })
+
+  // Translucent glowing neon halo underlay
+  map.addLayer({
+    id: 'route-line-halo',
+    type: 'line',
+    source: 'route',
+    paint: {
+      'line-color': '#ff6b4a',
+      'line-width': 10,
+      'line-opacity': 0.35,
+      'line-blur': 4
+    }
+  })
+
+  // Sharp main route line on top
   map.addLayer({
     id: 'route-line',
     type: 'line',
     source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ff6b4a', 'line-width': 4, 'line-opacity': 0.85 }
+    paint: {
+      'line-color': '#ff6b4a',
+      'line-width': 4.5,
+      'line-opacity': 0.85
+    }
   })
   routeLine = true
 }
@@ -324,7 +344,7 @@ function fitBounds() {
 function initMap() {
   map = new maplibregl.Map({
     container: 'map',
-    style: mapStyles[settings.mapStyle] || mapStyles.satellite,
+    style: 'https://tiles.openfreemap.org/styles/bright', // Base vector map for 3D buildings data
     projection: { type: 'globe' }, // Native 3D WebGL Globe Projection
     zoom: 1.5,
     center: [80, 30],
@@ -344,13 +364,132 @@ function initMap() {
 
   map.on('zoomend', updateGlobeEffect)
 
-  // WebGL 3D Globe Style Load Listener: Sets the projection and fog environment on every style load
+  // WebGL 3D Globe Style Load Listener: Sets the projection, physical heights terrain, overlays, 3D buildings, and fog
   map.on('style.load', () => {
     if (typeof map.setProjection === 'function') {
       map.setProjection({ type: 'globe' })
     }
 
-    // Add starry space backing fog environment
+    // 1. Add free custom DEM terrain mapping for physical heights
+    if (!map.getSource('aws-terrain')) {
+      map.addSource('aws-terrain', {
+        type: 'raster-dem',
+        tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+        encoding: 'terrarium',
+        tileSize: 256
+      })
+    }
+    map.setTerrain({ source: 'aws-terrain', exaggeration: 1.5 })
+
+    // 2. Add style sources for overlays
+    if (!map.getSource('carto-voyager')) {
+      map.addSource('carto-voyager', {
+        type: 'raster',
+        tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
+        tileSize: 256
+      })
+    }
+    if (!map.getSource('arcgis-satellite')) {
+      map.addSource('arcgis-satellite', {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256
+      })
+    }
+    if (!map.getSource('carto-dark')) {
+      map.addSource('carto-dark', {
+        type: 'raster',
+        tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'],
+        tileSize: 256
+      })
+    }
+    if (!map.getSource('osm-minimal')) {
+      map.addSource('osm-minimal', {
+        type: 'raster',
+        tiles: ['https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png'],
+        tileSize: 256
+      })
+    }
+
+    // 3. Add overlay layers with opacity based on active setting
+    if (!map.getLayer('voyager-overlay')) {
+      map.addLayer({
+        id: 'voyager-overlay',
+        type: 'raster',
+        source: 'carto-voyager',
+        paint: {
+          'raster-opacity': settings.mapStyle === 'voyager' ? 1.0 : 0.0
+        }
+      })
+    }
+    if (!map.getLayer('satellite-overlay')) {
+      map.addLayer({
+        id: 'satellite-overlay',
+        type: 'raster',
+        source: 'arcgis-satellite',
+        paint: {
+          'raster-opacity': settings.mapStyle === 'satellite' ? 1.0 : 0.0
+        }
+      })
+    }
+    if (!map.getLayer('dark-overlay')) {
+      map.addLayer({
+        id: 'dark-overlay',
+        type: 'raster',
+        source: 'carto-dark',
+        paint: {
+          'raster-opacity': settings.mapStyle === 'dark' ? 1.0 : 0.0
+        }
+      })
+    }
+    if (!map.getLayer('minimal-overlay')) {
+      map.addLayer({
+        id: 'minimal-overlay',
+        type: 'raster',
+        source: 'osm-minimal',
+        paint: {
+          'raster-opacity': settings.mapStyle === 'minimal' ? 1.0 : 0.0
+        }
+      })
+    }
+
+    // 4. Extract building layers to render elegant 3D urban geometries as camera moves closer
+    if (!map.getLayer('3d-buildings')) {
+      map.addLayer({
+        'id': '3d-buildings',
+        'source': 'openmaptiles',
+        'source-layer': 'building',
+        'type': 'fill-extrusion',
+        'minzoom': 13.5,
+        'paint': {
+          'fill-extrusion-color': [
+            'interpolate',
+            ['linear'],
+            ['get', 'render_height'],
+            0, '#f3f4f6',
+            100, '#d1d5db',
+            300, '#9ca3af'
+          ],
+          'fill-extrusion-height': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            13.5, 0,
+            15.0, ['get', 'render_height']
+          ],
+          'fill-extrusion-base': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            13.5, 0,
+            15.0, ['get', 'render_min_height']
+          ],
+          'fill-extrusion-opacity': 0.88
+        }
+      })
+    }
+
+    // 5. Add starry space backing fog environment
     map.setFog({
       'color': 'rgb(186, 210, 247)',
       'high-color': 'rgb(24, 60, 160)',
@@ -398,17 +537,16 @@ watch(() => settings.view3D, updateMap3D)
 watch(() => settings.tilt, updateMap3D)
 watch(() => settings.rotation, updateMap3D)
 
-// Map style
+// Map style: instantly and smoothly toggle overlay opacities without resetting vector layers or projection
 watch(() => settings.mapStyle, (val) => {
   if (!map) return
-  const styleMap = {
-    voyager: mapStyles.voyager,
-    dark: mapStyles.dark,
-    satellite: mapStyles.satellite,
-    minimal: mapStyles.minimal
-  }
-  const style = styleMap[val] || mapStyles.satellite
-  map.setStyle(style)
+  const overlays = ['voyager-overlay', 'satellite-overlay', 'dark-overlay', 'minimal-overlay']
+  overlays.forEach(id => {
+    if (map.getLayer(id)) {
+      const active = id.startsWith(val)
+      map.setPaintProperty(id, 'raster-opacity', active ? 1.0 : 0.0)
+    }
+  })
 })
 
 watch(() => settings.showDistance, () => renderRoute())
