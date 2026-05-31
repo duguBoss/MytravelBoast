@@ -49,7 +49,8 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import L from 'leaflet'
 import html2canvas from 'html2canvas'
 import { saveVideoFile, generateFilename, getPresetForRatio, convertWebMToMP4 } from '../utils/videoRecorder.js'
 
@@ -65,7 +66,10 @@ const ready = ref(false)
 const pct = ref(0), fi = ref(''), es = ref('')
 const mapBox = ref(null)
 
-const ratioLabel = {vertical:'9:16 竖屏',horizontal:'16:9 横屏',square:'1:1 方形'}
+const ratioLabel = computed(()=>{
+  const r = shape.value
+  return r==='vertical'?'9:16 竖屏':r==='horizontal'?'16:9 横屏':'1:1 方形'
+})
 
 let pmap = null, tileLayer = null, rline = null, vmarker = null, markers = []
 let af = null, a0 = 0, ad = 0
@@ -78,35 +82,33 @@ watch(()=>props.settings, v=>{if(v){local.value.vd=v.videoDuration??15;local.val
 function setL(k,v){local.value[k]=v;emit('update:settings',{...props.settings,[k]:v})}
 
 // ======== 真实地图 ========
-async function init(){
+async function init(retry=0){
   if(!props.points?.length) return
   clean()
-  const el = mapBox.value; if(!el) return
+  const el = mapBox.value
+  if(!el){if(retry<5){setTimeout(()=>init(retry+1),200)};return}
   try{
     pmap = L.map(el,{center:[props.points[0].lat,props.points[0].lng],zoom:5,zoomControl:false,attributionControl:false})
     tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,subdomains:['a','b','c']}).addTo(pmap)
-    await new Promise(r=>setTimeout(r,600))
-    // 路线
+    await new Promise(r=>setTimeout(r,800))
     const coords = props.points.map(p=>[p.lat,p.lng])
     rline = L.polyline(coords,{color:'#ff6b4a',weight:4,opacity:0.85}).addTo(pmap)
-    // 标记
     props.points.forEach((p,i)=>{
       const isS=i===0,isE=i===props.points.length-1
       const c = isS?'#4ade80':isE?'#f87171':'#fbbf24'
       const m = L.circleMarker([p.lat,p.lng],{radius:10,color:'#fff',weight:2.5,fillColor:c,fillOpacity:1}).addTo(pmap)
       const lb = isS?'A':isE?'B':String(i)
-      L.tooltip({permanent:true,direction:'center',className:'pl',opacity:1}).setLatLng([p.lat,p.lng]).setContent(`<b style="color:#fff;font-size:13px">${lb}</b>`).addTo(pmap)
+      L.tooltip({permanent:true,direction:'center',className:'pl',opacity:1}).setLatLng([p.lat,p.lng]).setContent('<b style="color:#fff;font-size:13px">'+lb+'</b>').addTo(pmap)
       markers.push(m)
     })
-    // 车
     const icon = props.segments?.[0]?.vehicle?.icon||'🚗'
-    const divIcon = L.divIcon({html:`<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">${icon}</div>`,iconSize:[32,32],iconAnchor:[16,16],className:'vm'})
+    const divIcon = L.divIcon({html:'<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">'+icon+'</div>',iconSize:[32,32],iconAnchor:[16,16],className:'vm'})
     vmarker = L.marker([props.points[0].lat,props.points[0].lng],{icon:divIcon}).addTo(pmap)
     pmap.fitBounds(coords,{padding:[50,50]})
     await nextTick()
     pmap.invalidateSize()
     ready.value = true
-  }catch(e){console.error(e);emit('toast','地图失败')}
+  }catch(e){console.error(e);emit('toast','地图加载失败')}
 }
 function clean(){if(pmap){pmap.remove();pmap=null}rline=null;vmarker=null;markers=[];ready.value=false}
 
