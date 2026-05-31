@@ -52,6 +52,15 @@ let animRaf = null
 
 // Map 3D refs
 const mapInner = ref(null)
+const globeInnerEl = ref(null)
+const globeScale = ref(1)
+const globeRound = ref(0)
+
+const globeStyle = computed(() => ({
+  width: globeScale.value + '%',
+  height: globeScale.value + '%',
+  borderRadius: globeRound.value + '%'
+}))
 
 // 3D Vehicle state
 const use3DModel = ref(true)
@@ -280,12 +289,12 @@ function fitBounds() {
 }
 
 function initMap() {
-  map = L.map('map', { zoomControl: false, minZoom: 2, maxBounds: [[-90,-180],[90,180]] }).setView([37.5, 128], 4)
+  map = L.map('map', { zoomControl: false, minZoom: 1, maxBounds: [[-90,-180],[90,180]] }).setView([20, 0], 2)
   L.control.zoom({ position: 'bottomright' }).addTo(map)
   mapTiles = L.tileLayer(tileUrls.voyager, {
     attribution: mapAttributions.voyager,
     maxZoom: 19,
-    minZoom: 2,
+    minZoom: 1,
     subdomains: tileSubdomains.voyager,
     crossOrigin: true,
     noWrap: true,
@@ -297,7 +306,26 @@ function initMap() {
     addPoint(e.latlng.lat, e.latlng.lng)
   })
 
+  map.on('zoomend', updateGlobeEffect)
+  updateGlobeEffect()
+
   renderRoute()
+}
+
+function updateGlobeEffect() {
+  if (!map) return
+  const z = map.getZoom()
+  const threshold = 3
+  if (z <= threshold) {
+    const progress = 1 - (z - 1) / (threshold - 1)
+    const size = 100 - progress * 40
+    const radius = progress * 50
+    globeScale.value = size
+    globeRound.value = radius
+  } else {
+    globeScale.value = 100
+    globeRound.value = 0
+  }
 }
 
 // 3D view
@@ -479,7 +507,7 @@ onMounted(() => {
   <div class="map-3d-wrapper">
     <div ref="mapInner" class="map-3d-inner" :class="{ tilted: settings.view3D }">
       <div class="globe-wrap">
-        <div class="globe-inner">
+        <div class="globe-inner" ref="globeInnerEl" :style="globeStyle">
           <div id="map"></div>
         </div>
       </div>

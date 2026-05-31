@@ -11,7 +11,7 @@
           <!-- 真实地图，不走形 -->
           <div class="map-box" ref="mapBox" :class="'shape-'+shape">
             <div class="globe-wrap">
-              <div class="globe-inner" ref="globeInner"></div>
+              <div class="globe-inner" ref="globeInner" :style="pGlobeStyle"></div>
             </div>
           </div>
           <div class="ctrl-bar">
@@ -78,6 +78,14 @@ const ready = ref(false)
 const pct = ref(0), fi = ref(''), es = ref('')
 const mapBox = ref(null)
 const globeInner = ref(null)
+const pGlobeScale = ref(100)
+const pGlobeRound = ref(0)
+
+const pGlobeStyle = computed(()=>({
+  width: pGlobeScale.value+'%',
+  height: pGlobeScale.value+'%',
+  borderRadius: pGlobeRound.value+'%'
+}))
 
 const ratioBadge = computed(()=>{
   const r = shape.value
@@ -138,12 +146,27 @@ async function init(retry=0){
     vmarker = L.marker([props.points[0].lat,props.points[0].lng],{icon:divIcon}).addTo(pmap)
     pmap.fitBounds(coords,{padding:[50,50]})
     applyTilt()
+    pmap.on('zoomend', updatePGlobe)
+    updatePGlobe()
     await nextTick()
     pmap.invalidateSize()
     ready.value = true
   }catch(e){console.error(e);emit('toast','地图加载失败')}
 }
 function clean(){if(pmap){pmap.remove();pmap=null}rline=null;vmarker=null;markers=[];ready.value=false}
+
+function updatePGlobe(){
+  if(!pmap) return
+  const z=pmap.getZoom(), threshold=3
+  if(z<=threshold){
+    const progress=1-(z-1)/(threshold-1)
+    pGlobeScale.value=100-progress*40
+    pGlobeRound.value=progress*50
+  }else{
+    pGlobeScale.value=100
+    pGlobeRound.value=0
+  }
+}
 
 // ======== 运镜 ========
 function ease(t){return 1-Math.pow(1-t,3)}
@@ -192,7 +215,7 @@ function dst(a,b){const R=6371,dL=(b.lat-a.lat)*Math.PI/180,dG=(b.lng-a.lng)*Mat
 function startPlay(){if(isRecording.value||isPlaying.value||!ready.value)return;isPlaying.value=true;a0=performance.now();ad=(local.value.vd||15)*1000;an()}
 function an(){
   const el=performance.now()-a0,t=Math.min(el/ad,1);pct.value=t*100
-  if(vmarker){const vp=vehAt(t);vmarker.setLatLng([vp.lat,vp.lng]);const c=getCam(t);pmap.setView([c.lat,c.lng],c.z,{animate:false})}
+  if(vmarker){const vp=vehAt(t);vmarker.setLatLng([vp.lat,vp.lng]);const c=getCam(t);pmap.setView([c.lat,c.lng],c.z,{animate:false});updatePGlobe()}
   if(t<1)af=requestAnimationFrame(an);else{isPlaying.value=false;if(isRecording.value)stopRec()}
 }
 function stopPlay(){if(af){cancelAnimationFrame(af);af=null}isPlaying.value=false;if(vmarker&&props.points?.length)vmarker.setLatLng([props.points[0].lat,props.points[0].lng])}
@@ -273,7 +296,7 @@ onBeforeUnmount(()=>{if(af)cancelAnimationFrame(af);clean()})
 .map-box.shape-horizontal{aspect-ratio:16/9;max-height:60vh}
 .map-box.shape-square{max-width:500px;aspect-ratio:1/1;max-height:70vh}
 .globe-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#1a2744 0%,#0a0e14 70%)}
-.globe-inner{width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 60px rgba(100,150,255,.15),inset 0 0 80px rgba(0,0,0,.4)}
+.globe-inner{width:100%;height:100%;border-radius:0%;overflow:hidden;box-shadow:0 0 60px rgba(100,150,255,.15),inset 0 0 80px rgba(0,0,0,.4);transition:width .6s cubic-bezier(.22,1,.36,1),height .6s cubic-bezier(.22,1,.36,1),border-radius .6s cubic-bezier(.22,1,.36,1)}
 .map-box :deep(.leaflet-container){background:#0a0e14;height:100%!important;width:100%!important}
 .map-box :deep(.leaflet-map-pane){transform-origin:center center}
 .map-box :deep(.leaflet-tile-pane){overflow:hidden}
