@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
 import TopBar from './components/TopBar.vue'
 import RoutePanel from './components/RoutePanel.vue'
@@ -12,7 +12,7 @@ import Toast from './components/Toast.vue'
 import ThreeVehicleOverlay from './components/ThreeVehicleOverlay.vue'
 
 import { vehicles } from './constants/vehicles.js'
-import { countryFlags, tileUrls, tileSubdomains, mapAttributions } from './constants/map.js'
+import { countryFlags, mapStyles } from './constants/map.js'
 import { uid, haversine, bearing, getFlag } from './utils/helpers.js'
 import { generateMultiSegmentPath, getVehiclePositionOnPath, calculatePathDistance } from './utils/pathGenerator.js'
 
@@ -26,9 +26,9 @@ const points = reactive([
 const segments = reactive([{ vehicle: vehicles[0], distance: 0 }])
 const settings = reactive({
   ratio: 'vertical', speed: 2, size: 'medium',
-  mapStyle: 'voyager', showDistance: true,
+  mapStyle: 'satellite', showDistance: true,
   showFlags: false, use3D: true, showLabels: true,
-  view3D: false, tilt: 55, rotation: 0,
+  view3D: false, tilt: 30, rotation: 0,
   videoDuration: 15, vehicleScale: 0.65
 })
 
@@ -43,7 +43,6 @@ const previewMode = ref('play')
 
 // Map refs
 let map = null
-let tileLayer = null
 let routeLine = null
 const distMarkers = ref([])
 const pinMarkers = ref([])
@@ -52,6 +51,15 @@ let animRaf = null
 
 // Map 3D refs
 const mapInner = ref(null)
+const globeInnerEl = ref(null)
+const globeScale = ref(1)
+const globeRound = ref(0)
+
+const globeStyle = computed(() => ({
+  width: globeScale.value + '%',
+  height: globeScale.value + '%',
+  borderRadius: globeRound.value + '%'
+}))
 
 // 3D Vehicle state
 const use3DModel = ref(true)
@@ -85,12 +93,6 @@ function addPoint(lat, lng, name) {
   syncSegments()
   renderRoute()
   showToast('已添加：' + nm)
-}
-
-// Fit bounds of the map to display the complete route
-function fitBounds() {
-  fitRoute()
-  showToast('已定位到路线')
 }
 
 function removePoint(id) {
@@ -141,17 +143,13 @@ function renderRoute() {
         ${flag ? `<div class="map-pin-flag">${flag}</div>` : ''}
         ${nameLabel ? `<div class="map-pin-label">${nameLabel}</div>` : ''}
       </div>`
-    
-    const icon = L.divIcon({
-      html,
-      className: '',
-      iconSize: [40, 56],
-      iconAnchor: [20, 48]
-    })
-    
-    const m = L.marker([p.lat, p.lng], { icon, draggable: true }).addTo(map)
+    const el = document.createElement('div')
+    el.innerHTML = html
+    const m = new maplibregl.Marker({ element: el.firstElementChild, draggable: true })
+      .setLngLat([p.lng, p.lat])
+      .addTo(map)
     m.on('dragend', () => {
-      const ll = m.getLatLng()
+      const ll = m.getLngLat()
       p.lat = ll.lat; p.lng = ll.lng
       updateDistances()
       renderRouteLine()
@@ -169,21 +167,29 @@ function renderRoute() {
 
 function renderRouteLine() {
   if (routeLine) {
-    map.removeLayer(routeLine)
-    routeLine = null
+    map.getSource('route') && map.removeLayer('route-line')
+    map.getSource('route') && map.removeSource('route')
   }
   const coords = routePathPoints.length > 0
-    ? routePathPoints.map(p => [p.lat, p.lng])
-    : points.map(p => [p.lat, p.lng])
+    ? routePathPoints.map(p => [p.lng, p.lat])
+    : points.map(p => [p.lng, p.lat])
   if (coords.length < 2) return
-  
-  routeLine = L.polyline(coords, {
-    color: '#ff6b4a',
-    weight: 4,
-    opacity: 0.85,
-    lineCap: 'round',
-    lineJoin: 'round'
-  }).addTo(map)
+  map.addSource('route', {
+    type: 'geojson',
+    data: {
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'LineString', coordinates: coords }
+    }
+  })
+  map.addLayer({
+    id: 'route-line',
+    type: 'line',
+    source: 'route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ff6b4a', 'line-width': 4, 'line-opacity': 0.85 }
+  })
+  routeLine = true
 }
 
 function renderVehicle() {
@@ -206,70 +212,81 @@ function renderVehicle() {
   const v = segments[0]?.vehicle || vehicles[0]
   let angle = 0
   if (points.length >= 2) {
-    angle = bearing(points[0].lat, points[0].lng, points[1].lat, points[1].lng)
+    angle = bearing(points[0].lat, points[0].lng, points[1].lat, points[1].lng) - 90
   }
-  const html = `<div class="moving-vehicle" style="transform: rotateZ(${angle}deg);">${v.icon}</div>`
-  const icon = L.divIcon({ html, className: '', iconSize: [44, 44], iconAnchor: [22, 22] })
-  vehicleMarker = L.marker([points[0].lat, points[0].lng], { icon, zIndexOffset: 1000 }).addTo(map)
+  const el = document.createElement('div')
+  el.innerHTML = `<div style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));transform:rotate(${angle}deg);">${v.icon}</div>`
+  const latlngs = points.map(p => [p.lng, p.lat])
+  vehicleMarker = new maplibregl.Marker({ element: el.firstElementChild })
+    .setLngLat(latlngs[0])
+    .addTo(map)
 }
 
 function updateVehiclePosition(t) {
+  let lat, lng, heading
   if (routePathPoints.length >= 2) {
     const pos = getVehiclePositionOnPath(routePathPoints, t)
+    lat = pos.lat
+    lng = pos.lng
+    heading = pos.heading
 
     if (use3DModel.value) {
-      vehicle3DPosition.value = { lat: pos.lat, lng: pos.lng }
-      vehicle3DHeading.value = pos.heading
+      vehicle3DPosition.value = { lat, lng }
+      vehicle3DHeading.value = heading
     }
 
     if (vehicleMarker) {
-      vehicleMarker.setLatLng([pos.lat, pos.lng])
-      const vehicleEl = vehicleMarker.getElement()?.querySelector('.moving-vehicle')
-      if (vehicleEl) {
-        vehicleEl.style.transform = `rotateZ(${pos.heading}deg)`
+      vehicleMarker.setLngLat([lng, lat])
+      const v = segments[0]?.vehicle || segments[0]?.vehicle
+      const el = document.createElement('div')
+      el.innerHTML = `<div style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));transform:rotate(${heading - 90}deg);">${v?.icon || '✈️'}</div>`
+      vehicleMarker.setElement(el.firstElementChild)
+    }
+  } else {
+    const totalDist = segments.reduce((s, seg) => s + seg.distance, 0)
+    const targetDist = totalDist * t
+
+    let acc = 0
+    let segIdx = 0, segT = 0
+    for (let i = 0; i < segments.length; i++) {
+      if (acc + segments[i].distance >= targetDist) {
+        segIdx = i
+        segT = segments[i].distance > 0 ? (targetDist - acc) / segments[i].distance : 0
+        break
       }
+      acc += segments[i].distance
     }
-    return
-  }
-
-  const totalDist = segments.reduce((s, seg) => s + seg.distance, 0)
-  const targetDist = totalDist * t
-
-  let acc = 0
-  let segIdx = 0, segT = 0
-  for (let i = 0; i < segments.length; i++) {
-    if (acc + segments[i].distance >= targetDist) {
-      segIdx = i
-      segT = segments[i].distance > 0 ? (targetDist - acc) / segments[i].distance : 0
-      break
+    if (segIdx >= segments.length) {
+      segIdx = segments.length - 1
+      segT = 1
     }
-    acc += segments[i].distance
-  }
-  if (segIdx >= segments.length) {
-    segIdx = segments.length - 1
-    segT = 1
-  }
 
-  const p1 = points[segIdx]
-  const p2 = points[segIdx + 1]
-  const lat = p1.lat + (p2.lat - p1.lat) * segT
-  const lng = p1.lng + (p2.lng - p1.lng) * segT
+    const p1 = points[segIdx]
+    const p2 = points[segIdx + 1]
+    lat = p1.lat + (p2.lat - p1.lat) * segT
+    lng = p1.lng + (p2.lng - p1.lng) * segT
+    heading = bearing(p1.lat, p1.lng, p2.lat, p2.lng)
 
-  if (use3DModel.value) {
-    const angle = bearing(p1.lat, p1.lng, p2.lat, p2.lng)
-    vehicle3DPosition.value = { lat, lng }
-    vehicle3DHeading.value = angle
-  }
-
-  if (vehicleMarker) {
-    vehicleMarker.setLatLng([lat, lng])
-    const v = segments[segIdx]?.vehicle || segments[0]?.vehicle
-    const angle = bearing(p1.lat, p1.lng, p2.lat, p2.lng)
-    const vehicleEl = vehicleMarker.getElement()?.querySelector('.moving-vehicle')
-    if (vehicleEl) {
-      vehicleEl.textContent = v?.icon || '✈️'
-      vehicleEl.style.transform = `rotateZ(${angle}deg)`
+    if (use3DModel.value) {
+      vehicle3DPosition.value = { lat, lng }
+      vehicle3DHeading.value = heading
     }
+
+    if (vehicleMarker) {
+      vehicleMarker.setLngLat([lng, lat])
+      const v = segments[segIdx]?.vehicle || segments[0]?.vehicle
+      const angle = heading - 90
+      const el = document.createElement('div')
+      el.innerHTML = `<div style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));transform:rotate(${angle}deg);">${v?.icon || '✈️'}</div>`
+      vehicleMarker.setElement(el.firstElementChild)
+    }
+  }
+
+  // Smooth cinematic camera tracking: center on the moving vehicle
+  if (map && isPlaying.value) {
+    map.jumpTo({
+      center: [lng, lat]
+    })
   }
 }
 
@@ -279,56 +296,102 @@ function renderDistLabels() {
     const p1 = points[i], p2 = points[i+1]
     const lat = (p1.lat + p2.lat) / 2, lng = (p1.lng + p2.lng) / 2
     const html = `<div class="distance-label">${segments[i].distance.toFixed(0)} km</div>`
-    const icon = L.divIcon({ html, className: '', iconSize: [80, 20], iconAnchor: [40, 10] })
-    const m = L.marker([lat, lng], { icon, interactive: false }).addTo(map)
+    const el = document.createElement('div')
+    el.innerHTML = html
+    const m = new maplibregl.Marker({ element: el.firstElementChild })
+      .setLngLat([lng, lat])
+      .addTo(map)
     distMarkers.value.push(m)
   }
 }
 
 function fitRoute() {
   if (points.length < 2) return
-  const latlngs = points.map(p => [p.lat, p.lng])
-  map.fitBounds(latlngs, { padding: [50, 50], duration: 800 })
+  const lngs = points.map(p => p.lng)
+  const lats = points.map(p => p.lat)
+  const bounds = [
+    [Math.min(...lngs), Math.min(...lats)],
+    [Math.max(...lngs), Math.max(...lats)]
+  ]
+  map.fitBounds(bounds, { padding: 60, duration: 800 })
+}
+
+function fitBounds() {
+  fitRoute()
+  showToast('已定位到路线')
 }
 
 function initMap() {
-  map = L.map('map', { zoomControl: false }).setView([37.5, 128], 4)
-  L.control.zoom({ position: 'bottomright' }).addTo(map)
+  map = new maplibregl.Map({
+    container: 'map',
+    style: mapStyles[settings.mapStyle] || mapStyles.satellite,
+    projection: { type: 'globe' }, // Native 3D WebGL Globe Projection
+    zoom: 1.5,
+    center: [80, 30],
+    pitch: 0,
+    bearing: 0,
+    attributionControl: false,
+    preserveDrawingBuffer: true // 【核心: 允许 Canvas 被录制】
+  })
 
-  const style = settings.mapStyle || 'voyager'
-  const url = tileUrls[style]
-  const subdomains = tileSubdomains[style] || []
-  const attribution = mapAttributions[style] || ''
-  
-  tileLayer = L.tileLayer(url, {
-    attribution,
-    maxZoom: 19,
-    subdomains
-  }).addTo(map)
+  // Add zoom control
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
 
   map.on('click', (e) => {
     if (map._addingStop) return
-    addPoint(e.latlng.lat, e.latlng.lng)
+    addPoint(e.lngLat.lat, e.lngLat.lng)
   })
 
-  updateMap3D()
-  renderRoute()
+  map.on('zoomend', updateGlobeEffect)
+
+  // WebGL 3D Globe Style Load Listener: Sets the projection and fog environment on every style load
+  map.on('style.load', () => {
+    if (typeof map.setProjection === 'function') {
+      map.setProjection({ type: 'globe' })
+    }
+
+    // Add starry space backing fog environment
+    map.setFog({
+      'color': 'rgb(186, 210, 247)',
+      'high-color': 'rgb(24, 60, 160)',
+      'space-color': 'rgb(6, 6, 17)',
+      'star-intensity': 0.75
+    })
+
+    renderRoute()
+  })
+
+  map.on('load', () => {
+    updateGlobeEffect()
+  })
 }
 
-// 3D view - Tilting Leaflet container using CSS 3D transforms
-function updateMap3D() {
-  const inner = mapInner.value
-  if (!inner) return
-  if (settings.view3D) {
-    inner.classList.add('tilted')
-    const tilt = settings.tilt || 55
-    const rot = settings.rotation || 0
-    inner.style.transform = `rotateX(${tilt}deg) rotateZ(${rot}deg) scale(1.15)`
+function updateGlobeEffect() {
+  if (!map) return
+  const z = map.getZoom()
+  const threshold = 3
+  if (z <= threshold) {
+    const progress = 1 - (z - 1) / (threshold - 1)
+    const size = 100 - progress * 40
+    const radius = progress * 50
+    globeScale.value = size
+    globeRound.value = radius
   } else {
-    inner.classList.remove('tilted')
-    inner.style.transform = ''
+    globeScale.value = 100
+    globeRound.value = 0
   }
-  setTimeout(() => { if (map) map.invalidateSize() }, 350)
+}
+
+// 3D view - use Mapbox native pitch instead of CSS transform
+function updateMap3D() {
+  if (!map) return
+  if (settings.view3D) {
+    map.setPitch(settings.tilt || 30)
+    map.setBearing(settings.rotation || 0)
+  } else {
+    map.setPitch(0)
+    map.setBearing(0)
+  }
 }
 
 watch(() => settings.view3D, updateMap3D)
@@ -337,16 +400,15 @@ watch(() => settings.rotation, updateMap3D)
 
 // Map style
 watch(() => settings.mapStyle, (val) => {
-  if (!map || !tileLayer) return
-  map.removeLayer(tileLayer)
-  const url = tileUrls[val]
-  const subdomains = tileSubdomains[val] || []
-  const attribution = mapAttributions[val] || ''
-  tileLayer = L.tileLayer(url, {
-    attribution,
-    maxZoom: 19,
-    subdomains
-  }).addTo(map)
+  if (!map) return
+  const styleMap = {
+    voyager: mapStyles.voyager,
+    dark: mapStyles.dark,
+    satellite: mapStyles.satellite,
+    minimal: mapStyles.minimal
+  }
+  const style = styleMap[val] || mapStyles.satellite
+  map.setStyle(style)
 })
 
 watch(() => settings.showDistance, () => renderRoute())
@@ -379,12 +441,6 @@ function playAnimation() {
     const t = Math.min(elapsed / duration, 1)
     playProgress.value = t * 100
     updateVehiclePosition(t)
-
-    // Center map around vehicle
-    if (points.length >= 2) {
-      const pos = getVehiclePositionOnPath(routePathPoints, t)
-      map.panTo([pos.lat, pos.lng], { animate: true, duration: 0.04 })
-    }
 
     if (t < 1) {
       animRaf = requestAnimationFrame(step)
@@ -428,11 +484,11 @@ function addStop() {
   showToast('点击地图添加途经点')
   leftOpen.value = false
   map._addingStop = true
-  map.getContainer().style.cursor = 'crosshair'
+  map.getCanvas().style.cursor = 'crosshair'
   const handler = (e) => {
-    addPoint(e.latlng.lat, e.latlng.lng)
+    addPoint(e.lngLat.lat, e.lngLat.lng)
     map._addingStop = false
-    map.getContainer().style.cursor = ''
+    map.getCanvas().style.cursor = ''
     map.off('click', handler)
   }
   map.on('click', handler)
@@ -452,7 +508,12 @@ function selectRoutePoint(i) {
   selSegment.value = i
   const p = points[i]
   if (map) {
-    map.flyTo([p.lat, p.lng], 10, { duration: 0.8 })
+    map.flyTo({
+      center: [p.lng, p.lat],
+      zoom: 10,
+      duration: 800,
+      essential: true
+    })
   }
 }
 
@@ -508,7 +569,11 @@ onMounted(() => {
 <template>
   <div class="map-3d-wrapper">
     <div ref="mapInner" class="map-3d-inner" :class="{ tilted: settings.view3D }">
-      <div id="map"></div>
+      <div class="globe-wrap">
+        <div class="globe-inner" ref="globeInnerEl" :style="globeStyle">
+          <div id="map"></div>
+        </div>
+      </div>
       <ThreeVehicleOverlay
         :visible="use3DModel"
         :lat="vehicle3DPosition.lat"
