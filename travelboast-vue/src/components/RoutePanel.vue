@@ -10,7 +10,7 @@ const props = defineProps({
   totalDist: String,
   open: Boolean
 })
-const emit = defineEmits(['select', 'delete', 'add', 'clear', 'setSegmentVehicle', 'editPoint'])
+const emit = defineEmits(['select', 'delete', 'add', 'clear', 'setSegmentVehicle', 'editPoint', 'movePoint'])
 
 const groupedSegments = computed(() => {
   return props.points.map((p, i) => ({
@@ -105,6 +105,24 @@ function saveEdit(point) {
             <span class="rp-seg-vehicle">{{ item.segment.vehicle?.icon }} {{ item.segment.vehicle?.name }}</span>
             <span class="rp-seg-dist">{{ item.segment.distance.toFixed(0) }} km</span>
           </div>
+        </div>
+        <div class="rp-item-controls" @click.stop>
+          <button
+            v-if="i > 0"
+            class="rp-control-arrow"
+            @click="emit('movePoint', i, -1)"
+            title="上移"
+          >
+            ▲
+          </button>
+          <button
+            v-if="i < points.length - 1"
+            class="rp-control-arrow"
+            @click="emit('movePoint', i, 1)"
+            title="下移"
+          >
+            ▼
+          </button>
         </div>
         <button
           v-if="!item.isStart && !item.isEnd"
@@ -415,5 +433,38 @@ function saveEdit(point) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.rp-item-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.rp-item:hover .rp-item-controls {
+  opacity: 1;
+}
+
+.rp-control-arrow {
+  border: none;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--muted);
+  font-size: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.2s;
+}
+
+.rp-control-arrow:hover {
+  background: var(--accent-light);
+  color: var(--accent);
 }
 </style>

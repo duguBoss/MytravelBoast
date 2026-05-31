@@ -148,12 +148,20 @@ function renderRoute() {
     const m = new maplibregl.Marker({ element: el.firstElementChild, draggable: true })
       .setLngLat([p.lng, p.lat])
       .addTo(map)
-    m.on('dragend', () => {
+    m.on('drag', () => {
       const ll = m.getLngLat()
       p.lat = ll.lat; p.lng = ll.lng
       updateDistances()
       renderRouteLine()
+      distMarkers.value.forEach(dm => dm.remove())
+      distMarkers.value = []
       renderDistLabels()
+    })
+    m.on('dragend', () => {
+      const ll = m.getLngLat()
+      p.lat = ll.lat; p.lng = ll.lng
+      updateDistances()
+      renderRoute()
     })
     pinMarkers.value.push(m)
   })
@@ -372,10 +380,8 @@ function initMap() {
   // Add zoom control
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
 
-  map.on('click', (e) => {
-    if (map._addingStop) return
-    addPoint(e.lngLat.lat, e.lngLat.lng)
-  })
+  // Default clicks on the map will not add route points anymore to prevent accidental clicks.
+  // Waypoints are explicitly added via the "添加途经点" button.
 
   map.on('zoomend', updateGlobeEffect)
 
@@ -635,7 +641,7 @@ function updateSetting(key, val) {
 
 function addStop() {
   showToast('点击地图添加途经点')
-  leftOpen.value = false
+  // Keep the left route list drawer open for continuous visual feedback
   map._addingStop = true
   map.getCanvas().style.cursor = 'crosshair'
   const handler = (e) => {
@@ -661,6 +667,8 @@ async function handleEditPoint(id, newName) {
   const p = points.find(pt => pt.id === id)
   if (!p) return
   p.name = newName
+  
+  showToast(`正在搜索 "${newName}" 并重新定位...`)
   
   // Try geocoding via OpenStreetMap Nominatim (free, open, no key required)
   try {
@@ -693,6 +701,33 @@ async function handleEditPoint(id, newName) {
     console.warn('Geocoding error:', e)
     showToast(`已更新名称：${newName}`)
   }
+}
+
+function handleMovePoint(index, dir) {
+  const newIndex = index + dir
+  if (newIndex < 0 || newIndex >= points.length) return
+  
+  const temp = points[index]
+  points[index] = points[newIndex]
+  points[newIndex] = temp
+  
+  points.forEach((p, idx) => {
+    if (idx === 0) p.type = 'start'
+    else if (idx === points.length - 1) p.type = 'end'
+    else p.type = 'stop'
+  })
+
+  const segIndex = index === points.length - 1 ? index - 1 : index
+  const newSegIndex = newIndex === points.length - 1 ? newIndex - 1 : newIndex
+  if (segments[segIndex] && segments[newSegIndex]) {
+    const tempSeg = segments[segIndex].vehicle
+    segments[segIndex].vehicle = segments[newSegIndex].vehicle
+    segments[newSegIndex].vehicle = tempSeg
+  }
+
+  showToast('已调整路线顺序')
+  updateDistances()
+  renderRoute()
 }
 
 function selectRoutePoint(i) {
@@ -799,6 +834,7 @@ onMounted(() => {
     @clear="clearRoute"
     @setSegmentVehicle="setSegmentVehicle"
     @editPoint="handleEditPoint"
+    @movePoint="handleMovePoint"
   />
 
   <VehiclePanel
