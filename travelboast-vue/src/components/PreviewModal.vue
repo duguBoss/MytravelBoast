@@ -9,7 +9,7 @@
       <div class="content">
         <div class="map-area">
           <!-- 真实地图，不走形 -->
-          <div class="map-box" ref="mapBox" :class="'shape-'+shape"></div>
+          <div class="map-box" ref="mapBox" :class="['shape-'+shape, {tilted: local.tilt>0}]" :style="{'--tilt': local.tilt+'deg'}"></div>
           <div class="ctrl-bar">
             <button class="btn" :class="{on:shape==='vertical'}" @click="shape='vertical'">9:16</button>
             <button class="btn" :class="{on:shape==='horizontal'}" @click="shape='horizontal'">16:9</button>
@@ -27,6 +27,14 @@
           <div class="sec">
             <div class="r"><span>车大小</span><span class="v">{{local.vs.toFixed(2)}}</span></div>
             <input type="range" min="0.3" max="1.5" :value="local.vs" step="0.05" class="s" @input="setL('vs',+$event.target.value)">
+          </div>
+          <div class="sec">
+            <div class="r"><span>倾斜</span><span class="v">{{local.tilt}}°</span></div>
+            <input type="range" min="0" max="60" :value="local.tilt" step="5" class="s" @input="setL('tilt',+$event.target.value)">
+          </div>
+          <div class="sec">
+            <div class="r"><span>放大比例</span><span class="v">{{(local.zoomScale*100).toFixed(0)}}%</span></div>
+            <input type="range" min="10" max="80" :value="local.zoomScale*100" step="5" class="s" @input="setL('zoomScale',+$event.target.value/100)">
           </div>
           <div class="sec">
             <div class="r"><span>质量</span></div>
@@ -58,7 +66,7 @@ const props = defineProps({show:Boolean,mode:{default:'play'},points:Array,segme
 const emit = defineEmits(['close','toast','update:settings'])
 
 const ql = {draft:'草稿',standard:'标准',high:'高清'}
-const local = ref({vd:15,vs:0.65,vq:'standard',wm:true})
+const local = ref({vd:15,vs:0.65,vq:'standard',wm:true,tilt:30,zoomScale:0.33})
 
 const shape = ref('vertical')
 const isPlaying = ref(false), isRecording = ref(false), isExporting = ref(false)
@@ -77,7 +85,7 @@ let af = null, a0 = 0, ad = 0
 // 同步 shape → settings.ratio
 watch(shape, v => emit('update:settings',{...props.settings,ratio:v}))
 watch(()=>props.show, async v=>{ if(v){await nextTick();setTimeout(init,300)}else{clean()} })
-watch(()=>props.settings, v=>{if(v){local.value.vd=v.videoDuration??15;local.value.vs=v.vehicleScale??0.65}},{immediate:true})
+watch(()=>props.settings, v=>{if(v){local.value.vd=v.videoDuration??15;local.value.vs=v.vehicleScale??0.65;local.value.tilt=v.tilt??30;local.value.zoomScale=v.zoomScale??0.33}},{immediate:true})
 
 function setL(k,v){local.value[k]=v;emit('update:settings',{...props.settings,[k]:v})}
 
@@ -119,14 +127,30 @@ function clean(){if(pmap){pmap.remove();pmap=null}rline=null;vmarker=null;marker
 function ease(t){return 1-Math.pow(1-t,3)}
 function ei(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
 
+function getRouteZoom(){
+  const pts=props.points
+  if(pts.length<2) return 5
+  const group = L.latLngBounds(pts.map(p=>[p.lat,p.lng]))
+  const ne = group.getNorthEast(), sw = group.getSouthWest()
+  const center = [(ne.lat+sw.lat)/2, (ne.lng+sw.lng)/2]
+  const scale = local.value.zoomScale ?? 0.33
+  const padded = L.latLngBounds(
+    [center[0]-(ne.lat-sw.lat)*scale, center[1]-(ne.lng-sw.lng)*scale],
+    [center[0]+(ne.lat-sw.lat)*scale, center[1]+(ne.lng-sw.lng)*scale]
+  )
+  return pmap.getBoundsZoom(padded, false)
+}
+
 function getCam(t){
   const pts=props.points, s=pts[0], e=pts[pts.length-1], v=vehAt(t)
+  const routeZoom = getRouteZoom()
+  const closeZoom = Math.min(routeZoom + 2, 16)
   let lat,lng,z
-  if(t<0.08){const p=ease(t/0.08);lat=s.lat;lng=s.lng;z=13-p*2}
-  else if(t<0.2){const p=ei((t-0.08)/0.12);lat=s.lat+(v.lat-s.lat)*p;lng=s.lng+(v.lng-s.lng)*p;z=11-p*2}
-  else if(t<0.8){const ah=vehAt(Math.min(t+0.05,1));lat=v.lat*0.5+ah.lat*0.5;lng=v.lng*0.5+ah.lng*0.5;const midLat=(s.lat+e.lat)/2,midLng=(s.lng+e.lng)/2;const r=Math.min(Math.hypot(v.lat-midLat,v.lng-midLng)/Math.hypot((e.lat-s.lat),(e.lng-s.lng)),1);z=10-r*1.5}
-  else if(t<0.94){const p=ei((t-0.8)/0.14);lat=v.lat+(e.lat-v.lat)*p;lng=v.lng+(e.lng-v.lng)*p;z=8.5+p*4}
-  else{const p=ei((t-0.94)/0.06);lat=e.lat;lng=e.lng;z=12.5+p*2}
+  if(t<0.08){const p=ease(t/0.08);lat=s.lat;lng=s.lng;z=closeZoom-p*(closeZoom-routeZoom)}
+  else if(t<0.2){const p=ei((t-0.08)/0.12);lat=s.lat+(v.lat-s.lat)*p;lng=s.lng+(v.lng-s.lng)*p;z=routeZoom+(closeZoom-routeZoom)*(1-p)}
+  else if(t<0.8){const ah=vehAt(Math.min(t+0.05,1));lat=v.lat*0.5+ah.lat*0.5;lng=v.lng*0.5+ah.lng*0.5;z=routeZoom}
+  else if(t<0.94){const p=ei((t-0.8)/0.14);lat=v.lat+(e.lat-v.lat)*p;lng=v.lng+(e.lng-v.lng)*p;z=routeZoom+(closeZoom-routeZoom)*p}
+  else{const p=ei((t-0.94)/0.06);lat=e.lat;lng=e.lng;z=closeZoom-p*(closeZoom-routeZoom)}
   return{lat,lng,z}
 }
 
@@ -222,10 +246,11 @@ onBeforeUnmount(()=>{if(af)cancelAnimationFrame(af);clean()})
 @media(max-width:820px){.content{flex-direction:column}}
 
 .map-area{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;align-items:center}
-.map-box{border-radius:12px;overflow:hidden;background:#0a0e14;position:relative;width:100%}
+.map-box{border-radius:12px;overflow:hidden;background:#0a0e14;position:relative;width:100%;transition:transform .3s ease}
 .map-box.shape-vertical{max-width:380px;aspect-ratio:9/16;max-height:70vh}
 .map-box.shape-horizontal{aspect-ratio:16/9;max-height:60vh}
 .map-box.shape-square{max-width:500px;aspect-ratio:1/1;max-height:70vh}
+.map-box.tilted{transform:perspective(800px) rotateX(var(--tilt,0deg))}
 .map-box :deep(.leaflet-container){background:#0a0e14;height:100%!important;width:100%!important;min-height:300px}
 
 .ctrl-bar{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
