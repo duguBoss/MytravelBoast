@@ -69,11 +69,11 @@ const vehicle3DScale = ref(1)
 
 // Dense path points for realistic vehicle animation
 let routePathPoints = []
-let routeTotalDistance = 0
+const routeTotalDistance = ref(0)
 
 // Computed
 const totalDistStr = computed(() => {
-  return routeTotalDistance.toFixed(0) + ' km'
+  return routeTotalDistance.value.toFixed(0) + ' km'
 })
 
 // Toast helper
@@ -116,7 +116,7 @@ function syncSegments() {
 
 function updateDistances() {
   routePathPoints = generateMultiSegmentPath(points, 100)
-  routeTotalDistance = calculatePathDistance(routePathPoints)
+  routeTotalDistance.value = calculatePathDistance(routePathPoints)
 
   segments.forEach((s, i) => {
     const d = haversine(points[i].lat, points[i].lng, points[i+1].lat, points[i+1].lng)
@@ -312,7 +312,7 @@ function updateVehiclePosition(t) {
 
   // Smooth cinematic camera tracking: center on the moving vehicle with 3-phase follow zoom
   if (map && isPlaying.value) {
-    const td = routeTotalDistance || 100
+    const td = routeTotalDistance.value || 100
     // Smooth, steady cinematic tracking (matches TravelBoast standard follow behavior)
     const followZoom = Math.max(3.5, Math.min(12.5, 11.5 - Math.log2(td / 50)))
 
@@ -461,8 +461,7 @@ function initMap() {
     }
   })
 
-  // WebGL 3D Globe Style Load Listener
-  map.on('style.load', () => {
+  const onStyleLoaded = () => {
     if (typeof map.setProjection === 'function') {
       map.setProjection({ type: 'globe' })
     }
@@ -476,7 +475,14 @@ function initMap() {
     })
 
     renderRoute()
-  })
+  }
+
+  // WebGL 3D Globe Style Load Listener
+  if (map.isStyleLoaded()) {
+    onStyleLoaded()
+  } else {
+    map.on('style.load', onStyleLoaded)
+  }
 
   map.on('load', () => {
     updateGlobeEffect()
@@ -550,7 +556,7 @@ function playAnimation() {
       renderVehicle()
     }
     playProgress.value = 0
-    const duration = Math.max((routeTotalDistance * 28) / (settings.speed || 2), 3000)
+    const duration = Math.max((routeTotalDistance.value * 28) / (settings.speed || 2), 3000)
     const startTime = performance.now()
 
     function step(now) {
