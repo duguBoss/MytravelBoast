@@ -310,24 +310,47 @@ function updateVehiclePosition(t) {
     }
   }
 
-  // Smooth cinematic camera tracking: center on the moving vehicle with parabolic height/angle swoops
+  // Smooth cinematic camera tracking: center on the moving vehicle with 3-phase follow zoom
   if (map && isPlaying.value) {
-    const sinusoidalProgress = Math.sin(t * Math.PI)
-    const currentZoom = 13.5 - (sinusoidalProgress * 11.0)
-    const currentPitch = 62 - (sinusoidalProgress * 57)
+    const td = routeTotalDistance || 100
+    // Dynamic base follow zoom calculated mathematically from route distance (closer zoom for short trips, wider for long ones)
+    const followZoom = Math.max(3.5, Math.min(12.5, 11.5 - Math.log2(td / 50)))
     
-    let finalBearing = 0
-    if (currentZoom < 6) {
-      // Space camera slow rotation
-      finalBearing = (t * 45) % 360
+    let zoom, pitch
+    if (t < 0.12) {
+      // Phase 1: Start Close-up (smoothly glide out from start point)
+      const progress = t / 0.12
+      zoom = (followZoom + 2.2) - progress * 2.2
+      pitch = 55 - progress * 7 // Eases from 55° to 48°
+    } else if (t > 0.88) {
+      // Phase 3: Destination Arrival (smoothly glide in and focus on arrival point)
+      const progress = (t - 0.88) / 0.12
+      zoom = followZoom + progress * 2.0
+      pitch = 48 + progress * 7 // Eases from 48° to 55°
     } else {
-      finalBearing = heading
+      // Phase 2: Steady Cruise Follow (comfortable tracking distance and horizon tilt)
+      zoom = followZoom
+      pitch = 48
     }
+
+    // Smooth bearing tracking: smoothly steer camera rotation from starting direction towards travel heading
+    let initialBearing = 0
+    if (routePathPoints.length >= 2) {
+      const p1 = routePathPoints[0]
+      const p2 = routePathPoints[1]
+      initialBearing = bearing(p1.lat, p1.lng, p2.lat, p2.lng)
+    } else if (points.length >= 2) {
+      initialBearing = bearing(points[0].lat, points[0].lng, points[1].lat, points[1].lng)
+    }
+
+    const bearingDiff = ((heading - initialBearing + 540) % 360) - 180
+    const blendFactor = t < 0.05 ? 0 : Math.sin((t - 0.05) / 0.95 * Math.PI / 2)
+    const finalBearing = initialBearing + bearingDiff * blendFactor
 
     map.jumpTo({
       center: [lng, lat],
-      zoom: Math.max(2.0, currentZoom),
-      pitch: Math.max(5.0, currentPitch),
+      zoom: zoom,
+      pitch: pitch,
       bearing: finalBearing
     })
   }

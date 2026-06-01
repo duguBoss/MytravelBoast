@@ -368,7 +368,36 @@ function getCam(t){
   const pts = props.points
   const v = vehAt(t)
   
-  // 1. Calculate travel heading (bearing) at current progress t
+  // Calculate total route distance dynamically
+  let td = 0
+  let ds = []
+  for (let i = 0; i < props.points.length - 1; i++) {
+    const d = dst(props.points[i], props.points[i + 1])
+    ds.push(d)
+    td += d
+  }
+  
+  // Dynamic base follow zoom calculated mathematically from route distance
+  const followZoom = Math.max(3.5, Math.min(12.5, 11.5 - Math.log2(td / 50)))
+  
+  let zoom, pitch
+  if (t < 0.12) {
+    // Phase 1: Start Close-up
+    const progress = t / 0.12
+    zoom = (followZoom + 2.2) - progress * 2.2
+    pitch = 55 - progress * 7 // Eases from 55° to 48°
+  } else if (t > 0.88) {
+    // Phase 3: Destination Arrival
+    const progress = (t - 0.88) / 0.12
+    zoom = followZoom + progress * 2.0
+    pitch = 48 + progress * 7 // Eases from 48° to 55°
+  } else {
+    // Phase 2: Steady Cruise Follow
+    zoom = followZoom
+    pitch = 48
+  }
+
+  // Calculate travel heading (bearing) at current progress t
   let currentBearing = 0
   if (t < 0.98) {
     const nextV = vehAt(t + 0.01)
@@ -382,30 +411,20 @@ function getCam(t){
     currentBearing = (Math.atan2(dx, dy) * 180) / Math.PI
   }
 
-  // 2. Parabolic vertical camera altitude ("Classic Arc" - signature TravelBoast effect)
-  // Smoothly swoops out to space (globe view) in the middle, and zooms in close at start & end
-  const sinusoidalProgress = Math.sin(t * Math.PI)
-  
-  // Starting close zoom (13.5) and space zoom out (2.5)
-  const currentZoom = 13.5 - (sinusoidalProgress * 11.0)
-  
-  // Deep 3D tilt angle (62°) close to ground, flat top-down angle (5°) in space
-  const currentPitch = 62 - (sinusoidalProgress * 57)
-  
-  // Slow down the bearing rotation in deep space to avoid map spinning, but track heading closely near the ground
-  let finalBearing = 0
-  if (currentZoom < 6) {
-    // Gentle space camera rotation matching progress
-    finalBearing = (t * 45) % 360
-  } else {
-    finalBearing = currentBearing
-  }
+  // Smooth bearing tracking: smoothly steer camera rotation from starting direction towards travel heading
+  const v0 = vehAt(0)
+  const vFirst = vehAt(0.02)
+  const initialBearing = (Math.atan2(vFirst.lng - v0.lng, vFirst.lat - v0.lat) * 180) / Math.PI
+
+  const bearingDiff = ((currentBearing - initialBearing + 540) % 360) - 180
+  const blendFactor = t < 0.05 ? 0 : Math.sin((t - 0.05) / 0.95 * Math.PI / 2)
+  const finalBearing = initialBearing + bearingDiff * blendFactor
 
   return {
     lat: v.lat,
     lng: v.lng,
-    z: Math.max(2.0, currentZoom),
-    pitch: Math.max(5.0, currentPitch),
+    z: zoom,
+    pitch: pitch,
     bearing: finalBearing
   }
 }
