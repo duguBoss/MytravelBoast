@@ -216,7 +216,7 @@ async function init(retry=0){
 
       try {
         // 3. Add overlay layers with opacity based on active setting
-        const curStyle = props.settings?.mapStyle || 'satellite'
+        const curStyle = props.settings?.mapStyle || 'voyager'
         if (!pmap.getLayer('voyager-overlay')) {
           pmap.addLayer({
             id: 'voyager-overlay',

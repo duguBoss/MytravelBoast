@@ -26,7 +26,7 @@ const points = reactive([
 const segments = reactive([{ vehicle: vehicles[0], distance: 0 }])
 const settings = reactive({
   ratio: 'vertical', speed: 2, size: 'medium',
-  mapStyle: 'satellite', showDistance: true,
+  mapStyle: 'voyager', showDistance: true,
   showFlags: false, use3D: true, showLabels: true,
   view3D: false, tilt: 30, rotation: 0,
   videoDuration: 15, vehicleScale: 0.65
