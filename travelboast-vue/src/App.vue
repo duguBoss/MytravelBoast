@@ -367,7 +367,84 @@ function fitBounds() {
 function initMap() {
   map = new maplibregl.Map({
     container: 'map',
-    style: 'https://tiles.openfreemap.org/styles/bright', // Base vector map for 3D buildings data
+    style: {
+      version: 8,
+      sources: {
+        'carto-voyager': {
+          type: 'raster',
+          tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '&copy; OpenStreetMap &copy; CARTO'
+        },
+        'arcgis-satellite': {
+          type: 'raster',
+          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          tileSize: 256,
+          attribution: 'Tiles &copy; Esri'
+        },
+        'carto-dark': {
+          type: 'raster',
+          tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'],
+          tileSize: 256,
+          attribution: '&copy; OSM &copy; CARTO'
+        },
+        'osm-minimal': {
+          type: 'raster',
+          tiles: ['https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '&copy; OSM'
+        },
+        'aws-terrain': {
+          type: 'raster-dem',
+          tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+          encoding: 'terrarium',
+          tileSize: 256
+        }
+      },
+      layers: [
+        {
+          id: 'background',
+          type: 'background',
+          paint: { 'background-color': '#f8fafc' }
+        },
+        {
+          id: 'voyager-overlay',
+          type: 'raster',
+          source: 'carto-voyager',
+          paint: {
+            'raster-opacity': settings.mapStyle === 'voyager' ? 1.0 : 0.0
+          }
+        },
+        {
+          id: 'satellite-overlay',
+          type: 'raster',
+          source: 'arcgis-satellite',
+          paint: {
+            'raster-opacity': settings.mapStyle === 'satellite' ? 1.0 : 0.0
+          }
+        },
+        {
+          id: 'dark-overlay',
+          type: 'raster',
+          source: 'carto-dark',
+          paint: {
+            'raster-opacity': settings.mapStyle === 'dark' ? 1.0 : 0.0
+          }
+        },
+        {
+          id: 'minimal-overlay',
+          type: 'raster',
+          source: 'osm-minimal',
+          paint: {
+            'raster-opacity': settings.mapStyle === 'minimal' ? 1.0 : 0.0
+          }
+        }
+      ],
+      terrain: {
+        source: 'aws-terrain',
+        exaggeration: 1.5
+      }
+    },
     projection: { type: 'globe' }, // Native 3D WebGL Globe Projection
     zoom: 1.5,
     center: [80, 30],
@@ -385,132 +462,13 @@ function initMap() {
 
   map.on('zoomend', updateGlobeEffect)
 
-  // WebGL 3D Globe Style Load Listener: Sets the projection, physical heights terrain, overlays, 3D buildings, and fog
+  // WebGL 3D Globe Style Load Listener
   map.on('style.load', () => {
     if (typeof map.setProjection === 'function') {
       map.setProjection({ type: 'globe' })
     }
 
-    // 1. Add free custom DEM terrain mapping for physical heights
-    if (!map.getSource('aws-terrain')) {
-      map.addSource('aws-terrain', {
-        type: 'raster-dem',
-        tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
-        encoding: 'terrarium',
-        tileSize: 256
-      })
-    }
-    map.setTerrain({ source: 'aws-terrain', exaggeration: 1.5 })
-
-    // 2. Add style sources for overlays
-    if (!map.getSource('carto-voyager')) {
-      map.addSource('carto-voyager', {
-        type: 'raster',
-        tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
-        tileSize: 256
-      })
-    }
-    if (!map.getSource('arcgis-satellite')) {
-      map.addSource('arcgis-satellite', {
-        type: 'raster',
-        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-        tileSize: 256
-      })
-    }
-    if (!map.getSource('carto-dark')) {
-      map.addSource('carto-dark', {
-        type: 'raster',
-        tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'],
-        tileSize: 256
-      })
-    }
-    if (!map.getSource('osm-minimal')) {
-      map.addSource('osm-minimal', {
-        type: 'raster',
-        tiles: ['https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png'],
-        tileSize: 256
-      })
-    }
-
-    // 3. Add overlay layers with opacity based on active setting
-    if (!map.getLayer('voyager-overlay')) {
-      map.addLayer({
-        id: 'voyager-overlay',
-        type: 'raster',
-        source: 'carto-voyager',
-        paint: {
-          'raster-opacity': settings.mapStyle === 'voyager' ? 1.0 : 0.0
-        }
-      })
-    }
-    if (!map.getLayer('satellite-overlay')) {
-      map.addLayer({
-        id: 'satellite-overlay',
-        type: 'raster',
-        source: 'arcgis-satellite',
-        paint: {
-          'raster-opacity': settings.mapStyle === 'satellite' ? 1.0 : 0.0
-        }
-      })
-    }
-    if (!map.getLayer('dark-overlay')) {
-      map.addLayer({
-        id: 'dark-overlay',
-        type: 'raster',
-        source: 'carto-dark',
-        paint: {
-          'raster-opacity': settings.mapStyle === 'dark' ? 1.0 : 0.0
-        }
-      })
-    }
-    if (!map.getLayer('minimal-overlay')) {
-      map.addLayer({
-        id: 'minimal-overlay',
-        type: 'raster',
-        source: 'osm-minimal',
-        paint: {
-          'raster-opacity': settings.mapStyle === 'minimal' ? 1.0 : 0.0
-        }
-      })
-    }
-
-    // 4. Extract building layers to render elegant 3D urban geometries as camera moves closer
-    if (!map.getLayer('3d-buildings')) {
-      map.addLayer({
-        'id': '3d-buildings',
-        'source': 'openmaptiles',
-        'source-layer': 'building',
-        'type': 'fill-extrusion',
-        'minzoom': 13.5,
-        'paint': {
-          'fill-extrusion-color': [
-            'interpolate',
-            ['linear'],
-            ['get', 'render_height'],
-            0, '#f3f4f6',
-            100, '#d1d5db',
-            300, '#9ca3af'
-          ],
-          'fill-extrusion-height': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            13.5, 0,
-            15.0, ['get', 'render_height']
-          ],
-          'fill-extrusion-base': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            13.5, 0,
-            15.0, ['get', 'render_min_height']
-          ],
-          'fill-extrusion-opacity': 0.88
-        }
-      })
-    }
-
-    // 5. Add starry space backing fog environment
+    // Add starry space backing fog environment
     map.setFog({
       'color': 'rgb(186, 210, 247)',
       'high-color': 'rgb(24, 60, 160)',

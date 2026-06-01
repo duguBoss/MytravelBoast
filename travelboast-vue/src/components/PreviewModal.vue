@@ -144,9 +144,87 @@ async function init(retry=0){
   if(rect.width<10 || rect.height<10){if(retry<10){setTimeout(()=>init(retry+1),300)};return}
   try{
     const innerEl = globeInner.value || el
+    const curStyle = props.settings?.mapStyle || 'voyager'
     pmap = new maplibregl.Map({
       container: innerEl,
-      style: 'https://tiles.openfreemap.org/styles/bright', // Base vector map
+      style: {
+        version: 8,
+        sources: {
+          'carto-voyager': {
+            type: 'raster',
+            tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '&copy; OpenStreetMap &copy; CARTO'
+          },
+          'arcgis-satellite': {
+            type: 'raster',
+            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            tileSize: 256,
+            attribution: 'Tiles &copy; Esri'
+          },
+          'carto-dark': {
+            type: 'raster',
+            tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'],
+            tileSize: 256,
+            attribution: '&copy; OSM &copy; CARTO'
+          },
+          'osm-minimal': {
+            type: 'raster',
+            tiles: ['https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '&copy; OSM'
+          },
+          'aws-terrain': {
+            type: 'raster-dem',
+            tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+            encoding: 'terrarium',
+            tileSize: 256
+          }
+        },
+        layers: [
+          {
+            id: 'background',
+            type: 'background',
+            paint: { 'background-color': '#f8fafc' }
+          },
+          {
+            id: 'voyager-overlay',
+            type: 'raster',
+            source: 'carto-voyager',
+            paint: {
+              'raster-opacity': curStyle === 'voyager' ? 1.0 : 0.0
+            }
+          },
+          {
+            id: 'satellite-overlay',
+            type: 'raster',
+            source: 'arcgis-satellite',
+            paint: {
+              'raster-opacity': curStyle === 'satellite' ? 1.0 : 0.0
+            }
+          },
+          {
+            id: 'dark-overlay',
+            type: 'raster',
+            source: 'carto-dark',
+            paint: {
+              'raster-opacity': curStyle === 'dark' ? 1.0 : 0.0
+            }
+          },
+          {
+            id: 'minimal-overlay',
+            type: 'raster',
+            source: 'osm-minimal',
+            paint: {
+              'raster-opacity': curStyle === 'minimal' ? 1.0 : 0.0
+            }
+          }
+        ],
+        terrain: {
+          source: 'aws-terrain',
+          exaggeration: 1.5
+        }
+      },
       projection: { type: 'globe' }, // Native 3D WebGL Globe Projection
       zoom: 3,
       center: [props.points[0].lng, props.points[0].lat],
@@ -164,146 +242,9 @@ async function init(retry=0){
       } catch (e) {
         console.warn('Preview map set projection error:', e)
       }
-
-      try {
-        // 1. Add free custom DEM terrain mapping for physical heights
-        if (!pmap.getSource('aws-terrain')) {
-          pmap.addSource('aws-terrain', {
-            type: 'raster-dem',
-            tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
-            encoding: 'terrarium',
-            tileSize: 256
-          })
-        }
-        pmap.setTerrain({ source: 'aws-terrain', exaggeration: 1.5 })
-      } catch (e) {
-        console.warn('Preview map terrain addition error:', e)
-      }
-
-      try {
-        // 2. Add style sources for overlays
-        if (!pmap.getSource('carto-voyager')) {
-          pmap.addSource('carto-voyager', {
-            type: 'raster',
-            tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
-            tileSize: 256
-          })
-        }
-        if (!pmap.getSource('arcgis-satellite')) {
-          pmap.addSource('arcgis-satellite', {
-            type: 'raster',
-            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-            tileSize: 256
-          })
-        }
-        if (!pmap.getSource('carto-dark')) {
-          pmap.addSource('carto-dark', {
-            type: 'raster',
-            tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'],
-            tileSize: 256
-          })
-        }
-        if (!pmap.getSource('osm-minimal')) {
-          pmap.addSource('osm-minimal', {
-            type: 'raster',
-            tiles: ['https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png'],
-            tileSize: 256
-          })
-        }
-      } catch (e) {
-        console.warn('Preview map overlay sources error:', e)
-      }
-
-      try {
-        // 3. Add overlay layers with opacity based on active setting
-        const curStyle = props.settings?.mapStyle || 'voyager'
-        if (!pmap.getLayer('voyager-overlay')) {
-          pmap.addLayer({
-            id: 'voyager-overlay',
-            type: 'raster',
-            source: 'carto-voyager',
-            paint: {
-              'raster-opacity': curStyle === 'voyager' ? 1.0 : 0.0
-            }
-          })
-        }
-        if (!pmap.getLayer('satellite-overlay')) {
-          pmap.addLayer({
-            id: 'satellite-overlay',
-            type: 'raster',
-            source: 'arcgis-satellite',
-            paint: {
-              'raster-opacity': curStyle === 'satellite' ? 1.0 : 0.0
-            }
-          })
-        }
-        if (!pmap.getLayer('dark-overlay')) {
-          pmap.addLayer({
-            id: 'dark-overlay',
-            type: 'raster',
-            source: 'carto-dark',
-            paint: {
-              'raster-opacity': curStyle === 'dark' ? 1.0 : 0.0
-            }
-          })
-        }
-        if (!pmap.getLayer('minimal-overlay')) {
-          pmap.addLayer({
-            id: 'minimal-overlay',
-            type: 'raster',
-            source: 'osm-minimal',
-            paint: {
-              'raster-opacity': curStyle === 'minimal' ? 1.0 : 0.0
-            }
-          })
-        }
-      } catch (e) {
-        console.warn('Preview map overlay layers error:', e)
-      }
-
-      try {
-        // 4. Extract building layers to render elegant 3D urban geometries as camera moves closer
-        const buildingSource = pmap.getSource('openfreemap') ? 'openfreemap' : (pmap.getSource('openmaptiles') ? 'openmaptiles' : null)
-        if (buildingSource && !pmap.getLayer('3d-buildings')) {
-          pmap.addLayer({
-            'id': '3d-buildings',
-            'source': buildingSource,
-            'source-layer': 'building',
-            'type': 'fill-extrusion',
-            'minzoom': 13.5,
-            'paint': {
-              'fill-extrusion-color': [
-                'interpolate',
-                ['linear'],
-                ['get', 'render_height'],
-                0, '#f3f4f6',
-                100, '#d1d5db',
-                300, '#9ca3af'
-              ],
-              'fill-extrusion-height': [
-                'interpolate',
-                ['linear'],
-                ['zoom'],
-                13.5, 0,
-                15.0, ['get', 'render_height']
-              ],
-              'fill-extrusion-base': [
-                'interpolate',
-                ['linear'],
-                ['zoom'],
-                13.5, 0,
-                15.0, ['get', 'render_min_height']
-              ],
-              'fill-extrusion-opacity': 0.88
-            }
-          })
-        }
-      } catch (e) {
-        console.warn('Preview map 3D buildings addition error:', e)
-      }
       
       try {
-        // 5. Starry space backing fog environment
+        // Starry space backing fog environment
         pmap.setFog({
           'color': 'rgb(186, 210, 247)',
           'high-color': 'rgb(24, 60, 160)',
