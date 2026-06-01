@@ -170,7 +170,7 @@ async function init(retry=0){
           },
           'osm-minimal': {
             type: 'raster',
-            tiles: ['https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png'],
+            tiles: ['https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'],
             tileSize: 256,
             attribution: '&copy; OSM'
           },
