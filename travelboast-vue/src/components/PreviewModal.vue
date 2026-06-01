@@ -411,21 +411,12 @@ function getCam(t){
     currentBearing = (Math.atan2(dx, dy) * 180) / Math.PI
   }
 
-  // Smooth bearing tracking: smoothly steer camera rotation from starting direction towards travel heading
-  const v0 = vehAt(0)
-  const vFirst = vehAt(0.02)
-  const initialBearing = (Math.atan2(vFirst.lng - v0.lng, vFirst.lat - v0.lat) * 180) / Math.PI
-
-  const bearingDiff = ((currentBearing - initialBearing + 540) % 360) - 180
-  const blendFactor = t < 0.05 ? 0 : Math.sin((t - 0.05) / 0.95 * Math.PI / 2)
-  const finalBearing = initialBearing + bearingDiff * blendFactor
-
   return {
     lat: v.lat,
     lng: v.lng,
     z: zoom,
     pitch: pitch,
-    bearing: finalBearing
+    bearing: props.settings?.rotation || 0
   }
 }
 

@@ -333,25 +333,11 @@ function updateVehiclePosition(t) {
       pitch = 48
     }
 
-    // Smooth bearing tracking: smoothly steer camera rotation from starting direction towards travel heading
-    let initialBearing = 0
-    if (routePathPoints.length >= 2) {
-      const p1 = routePathPoints[0]
-      const p2 = routePathPoints[1]
-      initialBearing = bearing(p1.lat, p1.lng, p2.lat, p2.lng)
-    } else if (points.length >= 2) {
-      initialBearing = bearing(points[0].lat, points[0].lng, points[1].lat, points[1].lng)
-    }
-
-    const bearingDiff = ((heading - initialBearing + 540) % 360) - 180
-    const blendFactor = t < 0.05 ? 0 : Math.sin((t - 0.05) / 0.95 * Math.PI / 2)
-    const finalBearing = initialBearing + bearingDiff * blendFactor
-
     map.jumpTo({
       center: [lng, lat],
       zoom: zoom,
       pitch: pitch,
-      bearing: finalBearing
+      bearing: settings.rotation || 0
     })
   }
 }
@@ -477,13 +463,20 @@ function initMap() {
     preserveDrawingBuffer: true // 【核心: 允许 Canvas 被录制】
   })
 
-  // Add zoom control
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
+  // Add zoom control and compass (resets direction to North-up on click)
+  map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'bottom-right')
 
   // Default clicks on the map will not add route points anymore to prevent accidental clicks.
   // Waypoints are explicitly added via the "添加途经点" button.
 
   map.on('zoomend', updateGlobeEffect)
+  
+  // Sync map rotation to UI state when user rotates manually or clicks compass
+  map.on('rotate', () => {
+    if (!isPlaying.value) {
+      settings.rotation = map.getBearing()
+    }
+  })
 
   // WebGL 3D Globe Style Load Listener
   map.on('style.load', () => {
