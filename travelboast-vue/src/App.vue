@@ -542,30 +542,42 @@ function playAnimation() {
   }
   if (isPlaying.value) return
 
-  if (!vehicleMarker && !use3DModel.value) {
-    renderVehicle()
-  }
-
   isPlaying.value = true
-  playProgress.value = 0
 
-  const duration = Math.max((routeTotalDistance * 28) / (settings.speed || 2), 3000)
-  const startTime = performance.now()
-
-  function step(now) {
-    const elapsed = now - startTime
-    const t = Math.min(elapsed / duration, 1)
-    playProgress.value = t * 100
-    updateVehiclePosition(t)
-
-    if (t < 1) {
-      animRaf = requestAnimationFrame(step)
-    } else {
-      isPlaying.value = false
+  const startPlaying = () => {
+    if (!isPlaying.value) return // Cancelled by user while waiting
+    if (!vehicleMarker && !use3DModel.value) {
+      renderVehicle()
     }
+    playProgress.value = 0
+    const duration = Math.max((routeTotalDistance * 28) / (settings.speed || 2), 3000)
+    const startTime = performance.now()
+
+    function step(now) {
+      const elapsed = now - startTime
+      const t = Math.min(elapsed / duration, 1)
+      playProgress.value = t * 100
+      updateVehiclePosition(t)
+
+      if (t < 1) {
+        animRaf = requestAnimationFrame(step)
+      } else {
+        isPlaying.value = false
+      }
+    }
+    animRaf = requestAnimationFrame(step)
   }
 
-  animRaf = requestAnimationFrame(step)
+  if (map && !map.areTilesLoaded()) {
+    showToast('等待地图加载完成...')
+    map.once('idle', () => {
+      if (isPlaying.value) {
+        startPlaying()
+      }
+    })
+  } else {
+    startPlaying()
+  }
 }
 
 function stopAnimation() {

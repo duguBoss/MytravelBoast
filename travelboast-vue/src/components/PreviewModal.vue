@@ -402,7 +402,27 @@ function vehAt(t){
 function dst(a,b){const R=6371,dL=(b.lat-a.lat)*Math.PI/180,dG=(b.lng-a.lng)*Math.PI/180;const sa=Math.sin(dL/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dG/2)**2;return R*2*Math.atan2(Math.sqrt(sa),Math.sqrt(1-sa))}
 
 // ======== 动画 ========
-function startPlay(){if(isRecording.value||isPlaying.value||!ready.value)return;isPlaying.value=true;a0=performance.now();ad=(local.value.vd||15)*1000;an()}
+function startPlay() {
+  if (isRecording.value || isPlaying.value || !ready.value) return
+  isPlaying.value = true
+  const doStartPlay = () => {
+    if (!isPlaying.value) return
+    a0 = performance.now()
+    ad = (local.value.vd || 15) * 1000
+    an()
+  }
+  if (pmap && !pmap.areTilesLoaded()) {
+    emit('toast', '等待地图加载完成...')
+    pmap.once('idle', () => {
+      if (isPlaying.value) {
+        emit('toast', '加载完成，开始播放')
+        doStartPlay()
+      }
+    })
+  } else {
+    doStartPlay()
+  }
+}
 function an(){
   const el=performance.now()-a0,t=Math.min(el/ad,1);pct.value=t*100;fi.value=Math.round(t*100)+'%'
   if(vmarker&&pmap){
