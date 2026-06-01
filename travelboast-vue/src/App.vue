@@ -313,30 +313,13 @@ function updateVehiclePosition(t) {
   // Smooth cinematic camera tracking: center on the moving vehicle with 3-phase follow zoom
   if (map && isPlaying.value) {
     const td = routeTotalDistance || 100
-    // Dynamic base follow zoom calculated mathematically from route distance (closer zoom for short trips, wider for long ones)
+    // Smooth, steady cinematic tracking (matches TravelBoast standard follow behavior)
     const followZoom = Math.max(3.5, Math.min(12.5, 11.5 - Math.log2(td / 50)))
-    
-    let zoom, pitch
-    if (t < 0.12) {
-      // Phase 1: Start Close-up (smoothly glide out from start point)
-      const progress = t / 0.12
-      zoom = (followZoom + 2.2) - progress * 2.2
-      pitch = 55 - progress * 7 // Eases from 55° to 48°
-    } else if (t > 0.88) {
-      // Phase 3: Destination Arrival (smoothly glide in and focus on arrival point)
-      const progress = (t - 0.88) / 0.12
-      zoom = followZoom + progress * 2.0
-      pitch = 48 + progress * 7 // Eases from 48° to 55°
-    } else {
-      // Phase 2: Steady Cruise Follow (comfortable tracking distance and horizon tilt)
-      zoom = followZoom
-      pitch = 48
-    }
 
     map.jumpTo({
       center: [lng, lat],
-      zoom: zoom,
-      pitch: pitch,
+      zoom: followZoom,
+      pitch: settings.tilt || 45,
       bearing: settings.rotation || 0
     })
   }

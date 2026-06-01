@@ -377,45 +377,14 @@ function getCam(t){
     td += d
   }
   
-  // Dynamic base follow zoom calculated mathematically from route distance
+  // Smooth, steady cinematic tracking
   const followZoom = Math.max(3.5, Math.min(12.5, 11.5 - Math.log2(td / 50)))
-  
-  let zoom, pitch
-  if (t < 0.12) {
-    // Phase 1: Start Close-up
-    const progress = t / 0.12
-    zoom = (followZoom + 2.2) - progress * 2.2
-    pitch = 55 - progress * 7 // Eases from 55° to 48°
-  } else if (t > 0.88) {
-    // Phase 3: Destination Arrival
-    const progress = (t - 0.88) / 0.12
-    zoom = followZoom + progress * 2.0
-    pitch = 48 + progress * 7 // Eases from 48° to 55°
-  } else {
-    // Phase 2: Steady Cruise Follow
-    zoom = followZoom
-    pitch = 48
-  }
-
-  // Calculate travel heading (bearing) at current progress t
-  let currentBearing = 0
-  if (t < 0.98) {
-    const nextV = vehAt(t + 0.01)
-    const dy = nextV.lat - v.lat
-    const dx = nextV.lng - v.lng
-    currentBearing = (Math.atan2(dx, dy) * 180) / Math.PI
-  } else {
-    const prevV = vehAt(Math.max(0, t - 0.01))
-    const dy = v.lat - prevV.lat
-    const dx = v.lng - prevV.lng
-    currentBearing = (Math.atan2(dx, dy) * 180) / Math.PI
-  }
 
   return {
     lat: v.lat,
     lng: v.lng,
-    z: zoom,
-    pitch: pitch,
+    z: followZoom,
+    pitch: props.settings?.tilt || 45,
     bearing: props.settings?.rotation || 0
   }
 }
