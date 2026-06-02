@@ -152,15 +152,15 @@ async function init(retry=0){
         sources: {
           'carto-voyager': {
             type: 'raster',
-            tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
+            tiles: ['https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}'],
             tileSize: 256,
-            attribution: '&copy; OpenStreetMap &copy; CARTO'
+            attribution: '&copy; 高德地图'
           },
           'arcgis-satellite': {
             type: 'raster',
-            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            tiles: ['https://webst01.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}'],
             tileSize: 256,
-            attribution: 'Tiles &copy; Esri'
+            attribution: '&copy; 高德地图'
           },
           'carto-dark': {
             type: 'raster',
@@ -172,13 +172,7 @@ async function init(retry=0){
             type: 'raster',
             tiles: ['https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'],
             tileSize: 256,
-            attribution: '&copy; OSM'
-          },
-          'aws-terrain': {
-            type: 'raster-dem',
-            tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
-            encoding: 'terrarium',
-            tileSize: 256
+            attribution: '&copy; OpenStreetMap contributors'
           }
         },
         layers: [
@@ -219,11 +213,7 @@ async function init(retry=0){
               'raster-opacity': curStyle === 'minimal' ? 1.0 : 0.0
             }
           }
-        ],
-        terrain: {
-          source: 'aws-terrain',
-          exaggeration: 1.5
-        }
+        ]
       },
       projection: { type: 'globe' }, // Native 3D WebGL Globe Projection
       zoom: 3,
