@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="travelboast-vue/public/logo.png" width="200" alt="TravelBoast Logo" />
+</p>
+
 # TravelBoast — 旅行路线动画生成器
 
 <p align="center">
