@@ -124,7 +124,7 @@ function updateDistances() {
   })
 }
 
-function renderRoute() {
+function renderRoute(shouldFit = true) {
   if (!map) return
   pinMarkers.value.forEach(m => m.remove())
   pinMarkers.value = []
@@ -168,7 +168,9 @@ function renderRoute() {
 
   renderRouteLine()
   updateDistances()
-  fitRoute()
+  if (shouldFit) {
+    fitRoute()
+  }
   renderDistLabels()
   renderVehicle()
 }
@@ -456,15 +458,27 @@ function initMap() {
       map.setProjection({ type: 'globe' })
     }
 
-    // Add starry space backing fog environment
-    map.setFog({
-      'color': 'rgb(186, 210, 247)',
-      'high-color': 'rgb(24, 60, 160)',
-      'space-color': 'rgb(6, 6, 17)',
-      'star-intensity': 0.75
-    })
+    // Add starry space backing fog environment if supported
+    if (typeof map.setFog === 'function') {
+      map.setFog({
+        'color': 'rgb(186, 210, 247)',
+        'high-color': 'rgb(24, 60, 160)',
+        'space-color': 'rgb(6, 6, 17)',
+        'star-intensity': 0.75
+      })
+    }
 
-    renderRoute()
+    renderRoute(false) // Render route pins and lines, but do not fit bounds yet
+
+    // Dynamically jump/fly to the starting position on startup
+    if (points.length > 0) {
+      map.flyTo({
+        center: [points[0].lng, points[0].lat],
+        zoom: 5,
+        duration: 1500,
+        essential: true
+      })
+    }
   }
 
   // WebGL 3D Globe Style Load Listener
@@ -748,6 +762,9 @@ function initMapDragRotate() {
     if (dragRot) { dragRot = false; mapEl.style.cursor = '' }
   })
 }
+
+// Calculate default route distances synchronously on startup
+updateDistances()
 
 onMounted(() => {
   nextTick(() => {
