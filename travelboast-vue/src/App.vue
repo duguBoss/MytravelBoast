@@ -66,6 +66,7 @@ const use3DModel = ref(true)
 const vehicle3DPosition = ref({ lat: 39.9042, lng: 116.4074 })
 const vehicle3DHeading = ref(0)
 const vehicle3DScale = ref(1)
+const vehicle3DId = ref('plane')
 
 // Dense path points for realistic vehicle animation
 let routePathPoints = []
@@ -235,6 +236,7 @@ function renderVehicle() {
     }
     vehicle3DPosition.value = { lat: points[0].lat, lng: points[0].lng }
     vehicle3DHeading.value = angle
+    vehicle3DId.value = v.id
     return
   }
 
@@ -261,17 +263,31 @@ function updateVehiclePosition(t) {
     lng = pos.lng
     heading = pos.heading
 
+    // Calculate active segment based on progress t
+    const totalDist = segments.reduce((s, seg) => s + seg.distance, 0)
+    const targetDist = totalDist * t
+    let acc = 0
+    let segIdx = 0
+    for (let i = 0; i < segments.length; i++) {
+      if (acc + segments[i].distance >= targetDist) {
+        segIdx = i
+        break
+      }
+      acc += segments[i].distance
+    }
+    const activeVehicle = segments[segIdx]?.vehicle || selVehicle.value
+
     if (use3DModel.value) {
       vehicle3DPosition.value = { lat, lng }
       vehicle3DHeading.value = heading
+      vehicle3DId.value = activeVehicle.id
     }
 
     if (vehicleMarker) {
       vehicleMarker.setLngLat([lng, lat])
-      const v = segments[0]?.vehicle || segments[0]?.vehicle
       const el = document.createElement('div')
       const playClass = isPlaying.value ? 'moving-vehicle-active' : ''
-      el.innerHTML = `<div style="transform:rotate(${heading - 90}deg);"><div class="${playClass}" style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));">${v?.icon || '✈️'}</div></div>`
+      el.innerHTML = `<div style="transform:rotate(${heading - 90}deg);"><div class="${playClass}" style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));">${activeVehicle?.icon || '✈️'}</div></div>`
       vehicleMarker.setElement(el.firstElementChild)
     }
   } else {
@@ -302,6 +318,7 @@ function updateVehiclePosition(t) {
     if (use3DModel.value) {
       vehicle3DPosition.value = { lat, lng }
       vehicle3DHeading.value = heading
+      vehicle3DId.value = activeVehicle.id
     }
 
     if (vehicleMarker) {
@@ -793,6 +810,7 @@ onMounted(() => {
         :scale="vehicle3DScale"
         :map-instance="map"
         :is-playing="isPlaying"
+        :vehicle-id="vehicle3DId"
       />
     </div>
   </div>

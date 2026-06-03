@@ -418,6 +418,23 @@ function an(){
   if(vmarker&&pmap){
     const vp=vehAt(t)
     vmarker.setLngLat([vp.lng,vp.lat])
+    
+    // Dynamically update the vehicle icon during playback to match active segment
+    let td=0,ds=[]
+    for(let i=0;i<props.points.length-1;i++){const d=dst(props.points[i],props.points[i+1]);ds.push(d);td+=d}
+    const tgt=td*t;let acc=0,si=0
+    for(let i=0;i<ds.length;i++){if(acc+ds[i]>=tgt){si=i;break}acc+=ds[i]}
+    const activeVehicle = props.segments?.[si]?.vehicle || props.segments?.[0]?.vehicle
+    if (activeVehicle) {
+      const el = vmarker.getElement()
+      if (el) {
+        const child = el.firstElementChild || el
+        if (child.textContent !== activeVehicle.icon) {
+          child.textContent = activeVehicle.icon
+        }
+      }
+    }
+    
     const c=getCam(t)
     pmap.jumpTo({ center: [c.lng, c.lat], zoom: c.z, pitch: c.pitch, bearing: c.bearing })
     updatePGlobe()
