@@ -29,10 +29,6 @@
 ## 效果演示
 
 <p align="center">
-  <img src="travelboast-vue/public/screenshot.png" alt="TravelBoast Web UI Preview" width="100%" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);" />
-</p>
-
-<p align="center">
   <video src="travelboast-vue/assets/demo.mp4" width="600" style="border-radius: 12px; max-width: 100%;" controls>
     您的浏览器不支持 HTML5 video 标签，请直接播放/下载本地 `travelboast-vue/assets/demo.mp4` 视频文件。
   </video>
