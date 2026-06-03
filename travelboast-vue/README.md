@@ -64,7 +64,7 @@ Visit [https://duguboss.github.io/MytravelBoast/](https://duguboss.github.io/Myt
 ## 效果展示 / Demo Video
 
 <div align="center">
-  <video src="./assets/demo.mp4" width="80%" controls autoplay loop muted></video>
+  <video src="https://raw.githubusercontent.com/duguBoss/MytravelBoast/main/travelboast-vue/assets/demo.mp4" width="80%" controls autoplay loop muted></video>
 </div>
 
 ---
