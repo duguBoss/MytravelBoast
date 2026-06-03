@@ -19,7 +19,15 @@ const categories = [
 
 const filteredVehicles = computed(() => {
   if (props.activeCat === 'all') return props.vehicles
-  return props.vehicles.filter(v => v.category === props.activeCat)
+  return props.vehicles.filter(v => {
+    if (props.activeCat === 'land') {
+      return v.cat === 'ground' || v.cat === 'rail'
+    }
+    if (props.activeCat === 'sea') {
+      return v.cat === 'water'
+    }
+    return v.cat === props.activeCat
+  })
 })
 </script>
 
