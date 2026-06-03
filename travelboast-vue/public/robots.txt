@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://duguboss.github.io/MytravelBoast/sitemap.xml
