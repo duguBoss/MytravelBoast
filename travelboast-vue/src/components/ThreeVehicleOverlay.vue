@@ -155,7 +155,7 @@ function loadGLBModel() {
       })
 
       // Apply initial rotation Y
-      const baseHeading = THREE.MathUtils.degToRad(-props.heading + 90)
+      const baseHeading = THREE.MathUtils.degToRad(180 - props.heading)
       carModel.rotation.set(0, baseHeading, 0)
 
       scene.add(carModel)
@@ -516,7 +516,7 @@ function createDynamic3DModel(id) {
   }
 
   carModel = group
-  const baseHeading = THREE.MathUtils.degToRad(-props.heading + 90)
+  const baseHeading = THREE.MathUtils.degToRad(180 - props.heading)
   carModel.rotation.set(0, baseHeading, 0)
   scene.add(carModel)
   updateMarker()
@@ -544,7 +544,7 @@ function animate() {
       currentPitch += (targetPitch - currentPitch) * 0.1
 
       // 3. Apply heading rotation + dynamic pitch & roll for immersive banking turns
-      const baseHeading = THREE.MathUtils.degToRad(-props.heading + 90)
+      const baseHeading = THREE.MathUtils.degToRad(180 - props.heading)
       carModel.rotation.set(0, 0, 0)
       carModel.rotateY(baseHeading)
       carModel.rotateX(currentPitch)
