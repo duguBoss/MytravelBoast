@@ -147,7 +147,7 @@ onMounted(initCompass)
               <span>视频时长</span>
               <span class="slider-value">{{ settings.videoDuration }} 秒</span>
             </div>
-            <input type="range" min="5" max="60" :value="settings.videoDuration" step="1" class="custom-slider" @input="e => setOpt('videoDuration', parseFloat(e.target.value))">
+            <input type="range" min="5" max="60" :value="settings.videoDuration" step="1" class="custom-slider" :style="{ '--pct': ((settings.videoDuration - 5) / 55 * 100) + '%' }" @input="e => setOpt('videoDuration', parseFloat(e.target.value))">
             <div class="slider-presets">
               <button class="preset-btn" :class="{ active: settings.videoDuration === 10 }" @click="setOpt('videoDuration', 10)">10s</button>
               <button class="preset-btn" :class="{ active: settings.videoDuration === 15 }" @click="setOpt('videoDuration', 15)">15s</button>
@@ -161,7 +161,7 @@ onMounted(initCompass)
               <span>交通工具大小</span>
               <span class="slider-value">{{ settings.vehicleScale.toFixed(2) }}</span>
             </div>
-            <input type="range" min="0.3" max="1.5" :value="settings.vehicleScale" step="0.05" class="custom-slider" @input="e => setOpt('vehicleScale', parseFloat(e.target.value))">
+            <input type="range" min="0.3" max="1.5" :value="settings.vehicleScale" step="0.05" class="custom-slider" :style="{ '--pct': ((settings.vehicleScale - 0.3) / 1.2 * 100) + '%' }" @input="e => setOpt('vehicleScale', parseFloat(e.target.value))">
             <div class="slider-presets">
               <button class="preset-btn" :class="{ active: settings.vehicleScale === 0.5 }" @click="setOpt('vehicleScale', 0.5)">小</button>
               <button class="preset-btn" :class="{ active: settings.vehicleScale === 0.65 }" @click="setOpt('vehicleScale', 0.65)">中</button>
@@ -258,7 +258,7 @@ onMounted(initCompass)
               <span>倾斜角度</span>
               <span class="slider-value">{{ settings.tilt }}°</span>
             </div>
-            <input type="range" min="0" max="75" :value="settings.tilt" step="0.5" class="custom-slider" @input="e => setTilt(parseFloat(e.target.value))">
+            <input type="range" min="0" max="75" :value="settings.tilt" step="0.5" class="custom-slider" :style="{ '--pct': (settings.tilt / 75 * 100) + '%' }" @input="e => setTilt(parseFloat(e.target.value))">
             <div class="slider-presets">
               <button class="preset-btn" :class="{ active: settings.tilt === 30 }" @click="setTilt(30)">30°</button>
               <button class="preset-btn" :class="{ active: settings.tilt === 45 }" @click="setTilt(45)">45°</button>
@@ -271,7 +271,7 @@ onMounted(initCompass)
               <span>旋转角度</span>
               <span class="slider-value">{{ settings.rotation }}°</span>
             </div>
-            <input type="range" min="-180" max="180" :value="settings.rotation" step="1" class="custom-slider" @input="e => setRotation(parseFloat(e.target.value))">
+            <input type="range" min="-180" max="180" :value="settings.rotation" step="1" class="custom-slider" :style="{ '--pct': ((settings.rotation + 180) / 360 * 100) + '%' }" @input="e => setRotation(parseFloat(e.target.value))">
             <div class="slider-presets">
               <button class="preset-btn" :class="{ active: settings.rotation === 0 }" @click="setRotation(0)">北</button>
               <button class="preset-btn" :class="{ active: settings.rotation === -90 }" @click="setRotation(-90)">东</button>
