@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js" alt="Vue 3">
   <img src="https://img.shields.io/badge/Vite-5.4-646CFF?logo=vite" alt="Vite">
-  <img src="https://img.shields.io/badge/Leaflet-1.9-199900?logo=leaflet" alt="Leaflet">
+  <img src="https://img.shields.io/badge/MapLibre-3.0-0081FF?logo=maplibre" alt="MapLibre GL">
   <img src="https://img.shields.io/badge/Three.js-0.160-000000?logo=three.js" alt="Three.js">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
 </p>
@@ -61,6 +61,15 @@ Visit [https://duguboss.github.io/MytravelBoast/](https://duguboss.github.io/Myt
 
 ---
 
+## 效果展示 / Demo Video
+
+<div align="center">
+  <video src="./assets/demo.mp4" width="80%" controls autoplay loop muted></video>
+  <p><em>(请将录制好的演示视频放置于 assets/demo.mp4 以展示实际录制效果)</em></p>
+</div>
+
+---
+
 ## 快速开始
 
 ### 环境要求
@@ -97,9 +106,9 @@ npm run build
 ```
 TravelBoast
 ├── Vue 3 + Vite          # 前端框架与构建工具
-├── Leaflet + OpenStreetMap  # 地图渲染
-├── Three.js              # 3D 车辆模型
-├── html2canvas           # 地图帧捕获
+├── MapLibre GL JS        # 地图 3D WebGL 渲染
+├── Three.js              # 3D 车辆模型 (与地图混合渲染)
+├── Canvas API            # 原生 Canvas 流视频捕获 (Composite Canvas)
 ├── FFmpeg.wasm           # 视频编码转码
 └── MediaRecorder API     # 视频录制
 ```
@@ -159,11 +168,11 @@ travelboast-vue/
 
 ### 视频录制流程
 
-1. **帧捕获**：通过 html2canvas 捕获 Leaflet 地图容器每一帧
-2. **动画驱动**：requestAnimationFrame 驱动运镜与车辆移动
-3. **编码合成**：MediaRecorder API 将 Canvas 流编码为 WebM
-4. **格式转换**：FFmpeg.wasm 转码为 MP4 (H.264)
-5. **文件保存**：File System Access API 直接保存至本地
+1. **帧捕获**：通过原生 Canvas 双缓冲混合捕获技术 (Composite Canvas)，将 MapLibre 的 WebGL 地图图层与 Three.js 的 3D 模型图层实时合成渲染
+2. **动画驱动**：`requestAnimationFrame` 驱动电影级运镜与 3D 车辆动态响应（引擎微震、转弯倾斜等物理效果）
+3. **编码合成**：利用 `canvas.captureStream()` 配合 `MediaRecorder API` 直接将混合画面编码为 `WebM` 视频流，录制性能极高不掉帧
+4. **格式转换**：内置集成 `FFmpeg.wasm` 在浏览器端完成向主流 `MP4 (H.264)` 格式的无损转码
+5. **文件保存**：通过现代浏览器的 `File System Access API` 快速安全保存至本地
 
 ---
 

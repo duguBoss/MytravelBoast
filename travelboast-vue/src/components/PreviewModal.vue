@@ -493,7 +493,8 @@ function an(){
       // Rotate the vehicle wrapper to face the travel heading
       const velEl = vmarker.getElement()
       if (velEl) {
-        velEl.style.transform = `rotate(${vp.heading - 90}deg)`
+        const wrapper = velEl.querySelector('.preview-vehicle-wrapper')
+        if (wrapper) wrapper.style.transform = `rotate(${vp.heading - 90}deg)`
       }
       
       // Dynamically update the vehicle icon during playback to match active segment
@@ -539,15 +540,66 @@ async function startRec(){
   const dur=(local.value.vd||15)*1000,qual=local.value.vq||'standard'
   try{
     isExporting.value=true;es.value='录制中...'
-    const canvas = pmap.getCanvas()
+    const mapCanvas = pmap.getCanvas()
+    const compCanvas = document.createElement('canvas')
+    compCanvas.width = mapCanvas.width
+    compCanvas.height = mapCanvas.height
+    const ctx = compCanvas.getContext('2d')
+    
     const preset=getPresetForRatio(props.settings?.ratio||'vertical',qual)
-    const stream = canvas.captureStream(preset.fps)
+    const stream = compCanvas.captureStream(preset.fps)
     const rec = new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9',videoBitsPerSecond:preset.bitrate*1000})
     const chunks = []
     rec.ondataavailable = e=>{if(e.data.size)chunks.push(e.data)}
     
     // 开始动画和录制
     a0=performance.now();ad=dur;isPlaying.value=true;an()
+    
+    // Composite render loop
+    const renderComposite = () => {
+      if(!isRecording.value) return
+      ctx.clearRect(0, 0, compCanvas.width, compCanvas.height)
+      ctx.drawImage(mapCanvas, 0, 0)
+      
+      if (use3DModel.value) {
+        const threeCanvas = mapBox.value?.querySelector('.three-vehicle-overlay canvas')
+        if (threeCanvas) {
+          const pos = pmap.project([vehicle3DPosition.value.lng, vehicle3DPosition.value.lat])
+          const scaleX = mapCanvas.width / mapCanvas.clientWidth
+          const scaleY = mapCanvas.height / mapCanvas.clientHeight
+          const cssWidth = parseFloat(threeCanvas.style.width) || threeCanvas.clientWidth
+          const cssHeight = parseFloat(threeCanvas.style.height) || threeCanvas.clientHeight
+          
+          const dx = pos.x * scaleX - (cssWidth / 2) * scaleX
+          const dy = pos.y * scaleY - (cssHeight / 2) * scaleY
+          const dw = cssWidth * scaleX
+          const dh = cssHeight * scaleY
+          
+          ctx.drawImage(threeCanvas, dx, dy, dw, dh)
+        }
+      } else {
+        const pos = pmap.project([vehicle3DPosition.value.lng, vehicle3DPosition.value.lat])
+        const scaleX = mapCanvas.width / mapCanvas.clientWidth
+        const scaleY = mapCanvas.height / mapCanvas.clientHeight
+        ctx.save()
+        ctx.translate(pos.x * scaleX, pos.y * scaleY)
+        ctx.rotate((vehicle3DHeading.value - 90) * Math.PI / 180)
+        ctx.font = `${28 * scaleX}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        let icon = '🚗'
+        if (vmarker) {
+          const inner = vmarker.getElement().querySelector('.preview-vehicle-inner')
+          if (inner) icon = inner.textContent
+        }
+        ctx.fillText(icon, 0, 0)
+        ctx.restore()
+      }
+      
+      requestAnimationFrame(renderComposite)
+    }
+    renderComposite()
+    
     rec.start(100)
     
     // 等待动画完成

@@ -109,7 +109,7 @@ function removePoint(id) {
 function syncSegments() {
   const newSegs = []
   for (let i = 0; i < points.length - 1; i++) {
-    const v = (segments[i] && segments[i].vehicle) || selVehicle.value
+    const v = selVehicle.value
     newSegs.push({ vehicle: v, distance: 0 })
   }
   segments.splice(0, segments.length, ...newSegs)
@@ -287,7 +287,8 @@ function updateVehiclePosition(t) {
       vehicleMarker.setLngLat([lng, lat])
       const el = vehicleMarker.getElement()
       if (el) {
-        el.style.transform = `rotate(${heading - 90}deg)`
+        const wrapper = el.querySelector('.moving-vehicle-wrapper')
+        if (wrapper) wrapper.style.transform = `rotate(${heading - 90}deg)`
         const inner = el.querySelector('.moving-vehicle-inner')
         if (inner) {
           if (inner.textContent !== activeVehicle.icon) {
@@ -334,7 +335,8 @@ function updateVehiclePosition(t) {
       vehicleMarker.setLngLat([lng, lat])
       const el = vehicleMarker.getElement()
       if (el) {
-        el.style.transform = `rotate(${heading - 90}deg)`
+        const wrapper = el.querySelector('.moving-vehicle-wrapper')
+        if (wrapper) wrapper.style.transform = `rotate(${heading - 90}deg)`
         const inner = el.querySelector('.moving-vehicle-inner')
         if (inner) {
           if (inner.textContent !== activeVehicle.icon) {
@@ -644,10 +646,7 @@ function openExport() {
 
 function selectVehicle(v) {
   selVehicle.value = v
-  const targetIdx = Math.min(selSegment.value, segments.length - 1)
-  if (targetIdx >= 0 && segments[targetIdx]) {
-    segments[targetIdx].vehicle = v
-  }
+  segments.forEach(seg => seg.vehicle = v)
   vehiclePanelOpen.value = false
   showToast('已选择：' + v.name)
   renderVehicle() // Force re-render the vehicle immediately
