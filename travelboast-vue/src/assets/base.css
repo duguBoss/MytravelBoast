@@ -202,6 +202,19 @@ html, body {
   text-shadow: 3px 6px 6px rgba(0,0,0,0.3);
 }
 
+@keyframes vehicle-wobble {
+  0% { transform: scale(1) translateY(0px) rotate(0deg); }
+  25% { transform: scale(1.08) translateY(-3px) rotate(-3deg); }
+  50% { transform: scale(1) translateY(0px) rotate(0deg); }
+  75% { transform: scale(1.08) translateY(-3px) rotate(3deg); }
+  100% { transform: scale(1) translateY(0px) rotate(0deg); }
+}
+
+.moving-vehicle-active {
+  animation: vehicle-wobble 0.6s infinite ease-in-out;
+  display: inline-block;
+}
+
 /* Mobile */
 @media (max-width: 768px) {
   .route-panel {

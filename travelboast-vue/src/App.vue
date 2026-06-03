@@ -245,7 +245,8 @@ function renderVehicle() {
     angle = bearing(points[0].lat, points[0].lng, points[1].lat, points[1].lng) - 90
   }
   const el = document.createElement('div')
-  el.innerHTML = `<div style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));transform:rotate(${angle}deg);">${v.icon}</div>`
+  const playClass = isPlaying.value ? 'moving-vehicle-active' : ''
+  el.innerHTML = `<div style="transform:rotate(${angle}deg);"><div class="${playClass}" style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));">${v.icon}</div></div>`
   const latlngs = points.map(p => [p.lng, p.lat])
   vehicleMarker = new maplibregl.Marker({ element: el.firstElementChild })
     .setLngLat(latlngs[0])
@@ -269,7 +270,8 @@ function updateVehiclePosition(t) {
       vehicleMarker.setLngLat([lng, lat])
       const v = segments[0]?.vehicle || segments[0]?.vehicle
       const el = document.createElement('div')
-      el.innerHTML = `<div style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));transform:rotate(${heading - 90}deg);">${v?.icon || '✈️'}</div>`
+      const playClass = isPlaying.value ? 'moving-vehicle-active' : ''
+      el.innerHTML = `<div style="transform:rotate(${heading - 90}deg);"><div class="${playClass}" style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));">${v?.icon || '✈️'}</div></div>`
       vehicleMarker.setElement(el.firstElementChild)
     }
   } else {
@@ -307,7 +309,8 @@ function updateVehiclePosition(t) {
       const v = segments[segIdx]?.vehicle || segments[0]?.vehicle
       const angle = heading - 90
       const el = document.createElement('div')
-      el.innerHTML = `<div style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));transform:rotate(${angle}deg);">${v?.icon || '✈️'}</div>`
+      const playClass = isPlaying.value ? 'moving-vehicle-active' : ''
+      el.innerHTML = `<div style="transform:rotate(${angle}deg);"><div class="${playClass}" style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));">${v?.icon || '✈️'}</div></div>`
       vehicleMarker.setElement(el.firstElementChild)
     }
   }
@@ -789,6 +792,7 @@ onMounted(() => {
         :heading="vehicle3DHeading"
         :scale="vehicle3DScale"
         :map-instance="map"
+        :is-playing="isPlaying"
       />
     </div>
   </div>

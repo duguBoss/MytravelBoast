@@ -484,6 +484,18 @@ function close(){
   isPlaying.value=false;isRecording.value=false;isExporting.value=false
   emit('close')
 }
+
+watch(isPlaying, (playing) => {
+  if (vmarker) {
+    const el = vmarker.getElement()
+    if (el) {
+      const child = el.firstElementChild || el
+      if (playing) child.classList.add('moving-vehicle-active')
+      else child.classList.remove('moving-vehicle-active')
+    }
+  }
+})
+
 onBeforeUnmount(()=>{if(af)cancelAnimationFrame(af);clean()})
 </script>
 

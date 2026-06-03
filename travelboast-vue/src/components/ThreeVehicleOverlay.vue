@@ -11,13 +11,21 @@ const props = defineProps({
   heading: { type: Number, default: 0 },
   scale: { type: Number, default: 1 },
   mapInstance: Object,
-  modelUrl: { type: String, default: '/models/car.glb' }
+  modelUrl: { type: String, default: '/models/car.glb' },
+  isPlaying: { type: Boolean, default: false }
 })
 
 const canvasContainer = ref(null)
 let scene, camera, renderer, carModel, animationId
 let isInitialized = false
 let marker = null
+
+// Advanced dynamic animation arrays and states
+let rotatingParts = []
+let wheels = []
+let targetRoll = 0
+let currentRoll = 0
+let currentPitch = 0
 
 function init() {
   if (isInitialized || !canvasContainer.value) return
@@ -66,6 +74,10 @@ function init() {
   plane.receiveShadow = true
   scene.add(plane)
 
+  // Clear arrays
+  rotatingParts = []
+  wheels = []
+
   // Load GLB model
   const loader = new GLTFLoader()
   loader.load(
@@ -76,8 +88,8 @@ function init() {
       // Auto-center and normalize scale
       const box = new THREE.Box3().setFromObject(carModel)
       const center = box.getCenter(new THREE.Vector3())
-      const size = box.getSize(new THREE.Vector3())
-      const maxDim = Math.max(size.x, size.y, size.z)
+      const sizeVec = box.getSize(new THREE.Vector3())
+      const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z)
       const targetSize = 1.2
       const scaleFactor = targetSize / maxDim
 
@@ -85,16 +97,33 @@ function init() {
       carModel.position.sub(center.clone().multiplyScalar(scaleFactor))
       carModel.position.y += 0.3 // Lift slightly above ground
 
-      // Enable shadows
+      // Enable shadows and detect wheels/propellers for lively animations
       carModel.traverse((child) => {
         if (child.isMesh) {
           child.castShadow = true
           child.receiveShadow = true
         }
+
+        // Search for spinable components by name
+        const name = child.name.toLowerCase()
+        if (name.includes('wheel') || name.includes('tire') || name.includes('rim')) {
+          wheels.push(child)
+        }
+        if (
+          name.includes('propeller') ||
+          name.includes('rotor') ||
+          name.includes('blade') ||
+          name.includes('fan') ||
+          name.includes('spin') ||
+          name.includes('prop')
+        ) {
+          rotatingParts.push(child)
+        }
       })
 
-      // Apply heading rotation
-      carModel.rotation.y = THREE.MathUtils.degToRad(-props.heading + 90)
+      // Apply initial rotation Y
+      const baseHeading = THREE.MathUtils.degToRad(-props.heading + 90)
+      carModel.rotation.set(0, baseHeading, 0)
 
       scene.add(carModel)
       updateMarker()
@@ -138,16 +167,20 @@ function createFallbackModel() {
     [-0.55, 0.2, -0.7],
     [0.55, 0.2, -0.7]
   ]
+
+  wheels = []
   wheelPositions.forEach(pos => {
     const wheel = new THREE.Mesh(wheelGeo, wheelMat)
     wheel.rotation.z = Math.PI / 2
     wheel.position.set(...pos)
     wheel.castShadow = true
     group.add(wheel)
+    wheels.push(wheel)
   })
 
   carModel = group
-  carModel.rotation.y = THREE.MathUtils.degToRad(-props.heading + 90)
+  const baseHeading = THREE.MathUtils.degToRad(-props.heading + 90)
+  carModel.rotation.set(0, baseHeading, 0)
   scene.add(carModel)
   updateMarker()
 }
@@ -155,10 +188,53 @@ function createFallbackModel() {
 function animate() {
   animationId = requestAnimationFrame(animate)
   if (renderer && scene && camera) {
-    // Gentle idle animation
     if (carModel) {
-      carModel.position.y = 0.3 + Math.sin(Date.now() * 0.002) * 0.02
+      // 1. Lively engine vibration and road bobbing
+      if (props.isPlaying) {
+        // High frequency micro-vibration when moving
+        carModel.position.y = 0.3 + Math.sin(Date.now() * 0.02) * 0.035
+      } else {
+        // Soft breathing idle bobbing
+        carModel.position.y = 0.3 + Math.sin(Date.now() * 0.003) * 0.015
+      }
+
+      // 2. Smoothly decay targetRoll back to 0
+      targetRoll *= 0.95
+      currentRoll += (targetRoll - currentRoll) * 0.1
+      
+      // Pitch forward slightly when driving, reset to flat when stationary
+      const targetPitch = props.isPlaying ? 0.05 : 0
+      currentPitch += (targetPitch - currentPitch) * 0.1
+
+      // 3. Apply heading rotation + dynamic pitch & roll for immersive banking turns
+      const baseHeading = THREE.MathUtils.degToRad(-props.heading + 90)
+      carModel.rotation.set(0, 0, 0)
+      carModel.rotateY(baseHeading)
+      carModel.rotateX(currentPitch)
+      carModel.rotateZ(currentRoll)
     }
+
+    // 4. Spin propellers or rotors (very fast when playing, slow when idle)
+    rotatingParts.forEach(part => {
+      const speed = props.isPlaying ? 0.65 : 0.05
+      // Spin around local Z or Y depending on orientation
+      if (part.rotation.z !== undefined) part.rotation.z += speed
+      else part.rotation.y += speed
+    })
+
+    // 5. Spin wheels to simulate rolling forward
+    wheels.forEach(wheel => {
+      if (props.isPlaying) {
+        if (wheel.geometry && wheel.geometry.type === 'CylinderGeometry') {
+          // Fallback cylinder wheels roll around local Y axis
+          wheel.rotation.y += 0.28
+        } else {
+          // GLB model wheels roll around local X axis
+          wheel.rotation.x += 0.28
+        }
+      }
+    })
+
     renderer.render(scene, camera)
   }
 }
@@ -182,11 +258,17 @@ function updateMarker() {
   }
 }
 
-function updateRotation() {
-  if (carModel) {
-    carModel.rotation.y = THREE.MathUtils.degToRad(-props.heading + 90)
+// Watch heading to calculate turn roll (banking)
+watch(() => props.heading, (newVal, oldVal) => {
+  if (oldVal !== undefined) {
+    let diff = newVal - oldVal
+    if (diff > 180) diff -= 360
+    if (diff < -180) diff += 360
+    
+    // Tilt the vehicle into the turn (positive roll for turning, max out at ~23 degrees)
+    targetRoll = THREE.MathUtils.clamp(-diff * 0.16, -0.4, 0.4)
   }
-}
+})
 
 // Ensure WebGL dimensions match scale
 function updateScale() {
@@ -219,13 +301,14 @@ function cleanup() {
   scene = null
   camera = null
   carModel = null
+  rotatingParts = []
+  wheels = []
   isInitialized = false
 }
 
 // Watch for changes
 watch(() => props.lat, updateMarker)
 watch(() => props.lng, updateMarker)
-watch(() => props.heading, updateRotation)
 watch(() => props.scale, () => {
   updateScale()
   updateMarker()
