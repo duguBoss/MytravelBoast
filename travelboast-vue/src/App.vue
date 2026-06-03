@@ -166,8 +166,8 @@ function renderRoute(shouldFit = true) {
     pinMarkers.value.push(m)
   })
 
-  renderRouteLine()
   updateDistances()
+  renderRouteLine()
   if (shouldFit) {
     fitRoute()
   }
