@@ -13,7 +13,13 @@ const emit = defineEmits(['menu', 'settings', 'play', 'stop', 'export', 'toggleV
         <span class="tb-text">路线</span>
       </button>
       <button class="tb-btn" @click="$emit('fitBounds')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 10v6a2 2 0 0 1-2 2h-6"/><path d="M3 10v6a2 2 0 0 0 2 2h6"/><path d="M13 21l-3-3 3-3"/><path d="M3 10v6a2 2 0 0 0 2 2h6"/><path d="M11 3l3 3-3 3"/><path d="M21 10v6a2 2 0 0 1-2 2h-6"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="22" y1="12" x2="18" y2="12"></line>
+          <line x1="6" y1="12" x2="2" y2="12"></line>
+          <line x1="12" y1="6" x2="12" y2="2"></line>
+          <line x1="12" y1="22" x2="12" y2="18"></line>
+        </svg>
         <span class="tb-text">视角</span>
       </button>
       <button class="tb-btn" @click="$emit('settings')">
