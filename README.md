@@ -189,6 +189,14 @@ npm run build
 
 ---
 
+### 👨‍💻 关注作者
+<p align="center">
+  <img src="travelboast-vue/assets/wechat_qrcode.jpg" width="250" alt="微信扫码 关注作者动态" /><br>
+  <strong>微信扫码 关注作者动态</strong>
+</p>
+
+---
+
 <p align="center">
   Made with ❤️ for travelers worldwide.
 </p>
