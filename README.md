@@ -28,7 +28,9 @@
 
 ## 效果演示
 
-https://github.com/duguBoss/MytravelBoast/raw/main/travelboast-vue/assets/demo.mp4
+<p align="center">
+  <img src="travelboast-vue/assets/demo.gif" alt="TravelBoast Demo" width="600" style="border-radius: 12px; max-width: 100%; box-shadow: 0 8px 30px rgba(0,0,0,0.3);" />
+</p>
 
 > [!TIP]
 > **效果视频录制说明**：

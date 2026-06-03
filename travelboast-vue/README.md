@@ -63,7 +63,9 @@ Visit [https://duguboss.github.io/MytravelBoast/](https://duguboss.github.io/Myt
 
 ## 效果展示 / Demo Video
 
-https://github.com/duguBoss/MytravelBoast/raw/main/travelboast-vue/assets/demo.mp4
+<div align="center">
+  <img src="./assets/demo.gif" alt="TravelBoast Demo" width="80%" style="border-radius: 12px; max-width: 100%; box-shadow: 0 8px 30px rgba(0,0,0,0.3);" />
+</div>
 
 ---
 
