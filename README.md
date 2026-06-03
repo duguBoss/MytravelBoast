@@ -28,11 +28,7 @@
 
 ## 效果演示
 
-<p align="center">
-  <video src="https://raw.githubusercontent.com/duguBoss/MytravelBoast/main/travelboast-vue/assets/demo.mp4" width="600" style="border-radius: 12px; max-width: 100%;" controls>
-    您的浏览器不支持 HTML5 video 标签，请直接播放/下载本地 `travelboast-vue/assets/demo.mp4` 视频文件。
-  </video>
-</p>
+https://github.com/duguBoss/MytravelBoast/raw/main/travelboast-vue/assets/demo.mp4
 
 > [!TIP]
 > **效果视频录制说明**：
