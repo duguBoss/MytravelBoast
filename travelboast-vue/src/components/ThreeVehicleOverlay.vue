@@ -82,13 +82,14 @@ function init() {
   animate()
 }
 
-function loadModel() {
-  if (props.vehicleId === 'car' || props.vehicleId === 'taxi') {
-    loadGLBModel()
-  } else {
-    createDynamic3DModel(props.vehicleId)
+  function loadModel() {
+    const glbModels = ['car', 'taxi', 'police', 'ambulance', 'firetruck', 'van', 'tractor', 'truck']
+    if (glbModels.includes(props.vehicleId)) {
+      loadGLBModel()
+    } else {
+      createDynamic3DModel(props.vehicleId)
+    }
   }
-}
 
 function loadGLBModel() {
   if (carModel) {
@@ -99,11 +100,13 @@ function loadGLBModel() {
   wheels = []
 
   const loader = new GLTFLoader()
+  const url = `/models/${props.vehicleId}.glb`
   loader.load(
-    props.modelUrl,
+    url,
     (gltf) => {
       carModel = gltf.scene
-
+      carModel.position.set(0, 0, 0)
+      
       // Auto-center and normalize scale
       const box = new THREE.Box3().setFromObject(carModel)
       const center = box.getCenter(new THREE.Vector3())
@@ -111,24 +114,13 @@ function loadGLBModel() {
       const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z)
       const targetSize = 1.2
       const scaleFactor = targetSize / maxDim
-
-      carModel.scale.setScalar(scaleFactor)
-      carModel.position.sub(center.clone().multiplyScalar(scaleFactor))
-      carModel.position.y += 0.3 // Lift slightly above ground
-
-      // Change taxi model color to yellow
-      if (props.vehicleId === 'taxi') {
-        carModel.traverse((child) => {
-          if (child.isMesh && child.material) {
-            // Apply yellow shade to the car body paint
-            const matName = child.material.name.toLowerCase()
-            if (matName.includes('body') || matName.includes('paint') || child.material.color.getHex() === 0xff0000 || child.material.color.getHex() === 0xe74c3c) {
-              child.material = child.material.clone()
-              child.material.color.setHex(0xf1c40f) // Bright Yellow Taxi Paint
-            }
-          }
-        })
-      }
+      
+      carModel.scale.set(scaleFactor, scaleFactor, scaleFactor)
+      
+      // Offset position to ground
+      carModel.position.y = (sizeVec.y * scaleFactor) / 2
+      carModel.position.x = -center.x * scaleFactor
+      carModel.position.z = -center.z * scaleFactor
 
       // Enable shadows and detect wheels/propellers for lively animations
       carModel.traverse((child) => {
