@@ -8,6 +8,9 @@ const emit = defineEmits(['menu', 'settings', 'play', 'stop', 'export', 'toggleV
 <template>
   <div class="topbar">
     <div class="topbar-section">
+      <div class="topbar-logo">
+        <img src="/logo.png" alt="MyTravelBoast" />
+      </div>
       <button class="tb-btn" @click="$emit('menu')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         <span class="tb-text">路线</span>
@@ -74,6 +77,17 @@ const emit = defineEmits(['menu', 'settings', 'play', 'stop', 'export', 'toggleV
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.topbar-logo {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 6px;
+}
+.topbar-logo img {
+  height: 100%;
+  object-fit: contain;
 }
 
 .topbar-section:last-child {
