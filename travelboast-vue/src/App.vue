@@ -644,7 +644,10 @@ function openExport() {
 
 function selectVehicle(v) {
   selVehicle.value = v
-  if (segments[selSegment.value]) segments[selSegment.value].vehicle = v
+  const targetIdx = Math.min(selSegment.value, segments.length - 1)
+  if (targetIdx >= 0 && segments[targetIdx]) {
+    segments[targetIdx].vehicle = v
+  }
   vehiclePanelOpen.value = false
   showToast('已选择：' + v.name)
   renderVehicle() // Force re-render the vehicle immediately
