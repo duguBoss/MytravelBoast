@@ -248,7 +248,7 @@ function renderVehicle() {
   }
   const el = document.createElement('div')
   const playClass = isPlaying.value ? 'moving-vehicle-active' : ''
-  el.innerHTML = `<div style="transform:rotate(${angle}deg);"><div class="${playClass}" style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));">${v.icon}</div></div>`
+  el.innerHTML = `<div class="moving-vehicle-wrapper" style="transform:rotate(${angle}deg);"><div class="moving-vehicle-inner ${playClass}" style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));">${v.icon}</div></div>`
   const latlngs = points.map(p => [p.lng, p.lat])
   vehicleMarker = new maplibregl.Marker({ element: el.firstElementChild })
     .setLngLat(latlngs[0])
@@ -256,7 +256,7 @@ function renderVehicle() {
 }
 
 function updateVehiclePosition(t) {
-  let lat, lng, heading
+  let lat, lng, heading, activeVehicle
   if (routePathPoints.length >= 2) {
     const pos = getVehiclePositionOnPath(routePathPoints, t)
     lat = pos.lat
@@ -275,7 +275,7 @@ function updateVehiclePosition(t) {
       }
       acc += segments[i].distance
     }
-    const activeVehicle = segments[segIdx]?.vehicle || selVehicle.value
+    activeVehicle = segments[segIdx]?.vehicle || selVehicle.value
 
     if (use3DModel.value) {
       vehicle3DPosition.value = { lat, lng }
@@ -285,10 +285,18 @@ function updateVehiclePosition(t) {
 
     if (vehicleMarker) {
       vehicleMarker.setLngLat([lng, lat])
-      const el = document.createElement('div')
-      const playClass = isPlaying.value ? 'moving-vehicle-active' : ''
-      el.innerHTML = `<div style="transform:rotate(${heading - 90}deg);"><div class="${playClass}" style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));">${activeVehicle?.icon || '✈️'}</div></div>`
-      vehicleMarker.setElement(el.firstElementChild)
+      const el = vehicleMarker.getElement()
+      if (el) {
+        el.style.transform = `rotate(${heading - 90}deg)`
+        const inner = el.querySelector('.moving-vehicle-inner')
+        if (inner) {
+          if (inner.textContent !== activeVehicle.icon) {
+            inner.textContent = activeVehicle.icon
+          }
+          if (isPlaying.value) inner.classList.add('moving-vehicle-active')
+          else inner.classList.remove('moving-vehicle-active')
+        }
+      }
     }
   } else {
     const totalDist = segments.reduce((s, seg) => s + seg.distance, 0)
@@ -314,6 +322,7 @@ function updateVehiclePosition(t) {
     lat = p1.lat + (p2.lat - p1.lat) * segT
     lng = p1.lng + (p2.lng - p1.lng) * segT
     heading = bearing(p1.lat, p1.lng, p2.lat, p2.lng)
+    activeVehicle = segments[segIdx]?.vehicle || selVehicle.value
 
     if (use3DModel.value) {
       vehicle3DPosition.value = { lat, lng }
@@ -323,12 +332,18 @@ function updateVehiclePosition(t) {
 
     if (vehicleMarker) {
       vehicleMarker.setLngLat([lng, lat])
-      const v = segments[segIdx]?.vehicle || segments[0]?.vehicle
-      const angle = heading - 90
-      const el = document.createElement('div')
-      const playClass = isPlaying.value ? 'moving-vehicle-active' : ''
-      el.innerHTML = `<div style="transform:rotate(${angle}deg);"><div class="${playClass}" style="font-size:32px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.3));">${v?.icon || '✈️'}</div></div>`
-      vehicleMarker.setElement(el.firstElementChild)
+      const el = vehicleMarker.getElement()
+      if (el) {
+        el.style.transform = `rotate(${heading - 90}deg)`
+        const inner = el.querySelector('.moving-vehicle-inner')
+        if (inner) {
+          if (inner.textContent !== activeVehicle.icon) {
+            inner.textContent = activeVehicle.icon
+          }
+          if (isPlaying.value) inner.classList.add('moving-vehicle-active')
+          else inner.classList.remove('moving-vehicle-active')
+        }
+      }
     }
   }
 
@@ -632,6 +647,7 @@ function selectVehicle(v) {
   if (segments[selSegment.value]) segments[selSegment.value].vehicle = v
   vehiclePanelOpen.value = false
   showToast('已选择：' + v.name)
+  renderVehicle() // Force re-render the vehicle immediately
 }
 
 function updateSetting(key, val) {
@@ -746,6 +762,7 @@ function setSegmentVehicle(i) {
   selSegment.value = i
   segments[i].vehicle = selVehicle.value
   showToast('路段 ' + (i+1) + ' 交通工具已更新')
+  renderVehicle() // Force re-render the vehicle immediately
 }
 
 function toggleVehiclePanel() {
