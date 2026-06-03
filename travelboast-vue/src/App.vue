@@ -62,10 +62,10 @@ const globeStyle = computed(() => ({
 }))
 
 // 3D Vehicle state
-const use3DModel = ref(true)
+const use3DModel = computed(() => settings.use3D)
 const vehicle3DPosition = ref({ lat: 39.9042, lng: 116.4074 })
 const vehicle3DHeading = ref(0)
-const vehicle3DScale = ref(1)
+const vehicle3DScale = computed(() => settings.vehicleScale)
 const vehicle3DId = ref('plane')
 
 // Dense path points for realistic vehicle animation

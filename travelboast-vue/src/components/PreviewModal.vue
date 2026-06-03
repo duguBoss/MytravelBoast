@@ -13,6 +13,16 @@
             <div class="globe-wrap">
               <div class="globe-inner" ref="globeInner" :style="pGlobeStyle"></div>
             </div>
+            <ThreeVehicleOverlay
+              :visible="use3DModel"
+              :lat="vehicle3DPosition.lat"
+              :lng="vehicle3DPosition.lng"
+              :heading="vehicle3DHeading"
+              :scale="vehicle3DScale"
+              :map-instance="pmapRef"
+              :is-playing="isPlaying"
+              :vehicle-id="vehicle3DId"
+            />
           </div>
           <div class="ctrl-bar">
             <button class="btn" :class="{on:shape==='vertical'}" @click="shape='vertical'">9:16</button>
@@ -75,12 +85,21 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // 移除 html2canvas 依赖，直接使用 canvas 捕获
 import { saveVideoFile, generateFilename, getPresetForRatio, convertWebMToMP4 } from '../utils/videoRecorder.js'
 import { mapStyles } from '../constants/map.js'
+import ThreeVehicleOverlay from './ThreeVehicleOverlay.vue'
 
 const props = defineProps({show:Boolean,mode:{default:'play'},points:Array,segments:Array,settings:Object,mapInstance:Object})
 const emit = defineEmits(['close','toast','update:settings'])
 
 const ql = {draft:'草稿',standard:'标准',high:'高清'}
 const local = ref({vd:15,vs:0.65,vq:'standard',wm:true,tilt:30,zoomScale:0.33})
+
+// 3D Vehicle state
+const use3DModel = computed(() => props.settings?.use3D ?? true)
+const vehicle3DPosition = ref({ lat: 0, lng: 0 })
+const vehicle3DHeading = ref(0)
+const vehicle3DScale = computed(() => local.value.vs ?? 0.65)
+const vehicle3DId = ref('car')
+const pmapRef = ref(null)
 
 const shape = ref('vertical')
 const isPlaying = ref(false), isRecording = ref(false), isExporting = ref(false)
@@ -223,6 +242,7 @@ async function init(retry=0){
       attributionControl: false,
       preserveDrawingBuffer: true
     })
+    pmapRef.value = pmap
     
     pmap.on('style.load', () => {
       try {
@@ -296,12 +316,29 @@ async function init(retry=0){
       markers.push(m)
     })
 
-    // Add vehicle marker with initial heading alignment
-    const icon = props.segments?.[0]?.vehicle?.icon||'🚗'
-    const vel = document.createElement('div')
+    // Set initial 3D states
+    const activeVehicle = props.segments?.[0]?.vehicle || props.segments?.[0]?.vehicle
+    if (activeVehicle) {
+      vehicle3DId.value = activeVehicle.id
+    } else {
+      vehicle3DId.value = 'car'
+    }
     const initialHeading = props.points.length >= 2 ? dstHeading(props.points[0], props.points[1]) : 0
-    vel.innerHTML = `<div class="preview-vehicle-wrapper" style="transform:rotate(${initialHeading - 90}deg);"><div class="preview-vehicle-inner" style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">${icon}</div></div>`
-    vmarker = new maplibregl.Marker({ element: vel.firstElementChild }).setLngLat([props.points[0].lng,props.points[0].lat]).addTo(pmap)
+    vehicle3DPosition.value = { lat: props.points[0].lat, lng: props.points[0].lng }
+    vehicle3DHeading.value = initialHeading
+
+    // Add vehicle marker with initial heading alignment
+    if (!use3DModel.value) {
+      const icon = activeVehicle?.icon || '🚗'
+      const vel = document.createElement('div')
+      vel.innerHTML = `<div class="preview-vehicle-wrapper" style="transform:rotate(${initialHeading - 90}deg);"><div class="preview-vehicle-inner" style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">${icon}</div></div>`
+      vmarker = new maplibregl.Marker({ element: vel.firstElementChild }).setLngLat([props.points[0].lng,props.points[0].lat]).addTo(pmap)
+    } else {
+      if (vmarker) {
+        vmarker.remove()
+        vmarker = null
+      }
+    }
 
     // Fit bounds
     const lngs = props.points.map(p=>p.lng)
@@ -317,7 +354,17 @@ async function init(retry=0){
     ready.value = true
   }catch(e){console.error(e);emit('toast','地图加载失败')}
 }
-function clean(){if(pmap){pmap.remove();pmap=null}rline=null;vmarker=null;markers=[];ready.value=false}
+function clean(){
+  if(pmap){pmap.remove();pmap=null}
+  pmapRef.value = null
+  rline=null;
+  if (vmarker) {
+    vmarker.remove()
+    vmarker = null
+  }
+  markers=[];
+  ready.value=false
+}
 
 function updatePGlobe(){
   if(!pmap) return
@@ -427,28 +474,36 @@ function startPlay() {
 }
 function an(){
   const el=performance.now()-a0,t=Math.min(el/ad,1);pct.value=t*100;fi.value=Math.round(t*100)+'%'
-  if(vmarker&&pmap){
+  if(pmap){
     const vp=vehAt(t)
-    vmarker.setLngLat([vp.lng,vp.lat])
+    vehicle3DPosition.value = { lat: vp.lat, lng: vp.lng }
+    vehicle3DHeading.value = vp.heading
     
-    // Rotate the vehicle wrapper to face the travel heading
-    const velEl = vmarker.getElement()
-    if (velEl) {
-      velEl.style.transform = `rotate(${vp.heading - 90}deg)`
-    }
-    
-    // Dynamically update the vehicle icon during playback to match active segment
     let td=0,ds=[]
     for(let i=0;i<props.points.length-1;i++){const d=dst(props.points[i],props.points[i+1]);ds.push(d);td+=d}
     const tgt=td*t;let acc=0,si=0
     for(let i=0;i<ds.length;i++){if(acc+ds[i]>=tgt){si=i;break}acc+=ds[i]}
     const activeVehicle = props.segments?.[si]?.vehicle || props.segments?.[0]?.vehicle
     if (activeVehicle) {
-      const el = vmarker.getElement()
-      if (el) {
-        const inner = el.querySelector('.preview-vehicle-inner')
-        if (inner && inner.textContent !== activeVehicle.icon) {
-          inner.textContent = activeVehicle.icon
+      vehicle3DId.value = activeVehicle.id
+    }
+    
+    if (vmarker) {
+      vmarker.setLngLat([vp.lng,vp.lat])
+      // Rotate the vehicle wrapper to face the travel heading
+      const velEl = vmarker.getElement()
+      if (velEl) {
+        velEl.style.transform = `rotate(${vp.heading - 90}deg)`
+      }
+      
+      // Dynamically update the vehicle icon during playback to match active segment
+      if (activeVehicle) {
+        const el = vmarker.getElement()
+        if (el) {
+          const inner = el.querySelector('.preview-vehicle-inner')
+          if (inner && inner.textContent !== activeVehicle.icon) {
+            inner.textContent = activeVehicle.icon
+          }
         }
       }
     }
@@ -459,7 +514,22 @@ function an(){
   }
   if(t<1)af=requestAnimationFrame(an);else{isPlaying.value=false;if(isRecording.value)stopRec()}
 }
-function stopPlay(){if(af){cancelAnimationFrame(af);af=null}isPlaying.value=false;if(vmarker&&props.points?.length)vmarker.setLngLat([props.points[0].lng,props.points[0].lat])}
+function stopPlay(){
+  if(af){cancelAnimationFrame(af);af=null}
+  isPlaying.value=false;
+  if(props.points?.length){
+    const activeVehicle = props.segments?.[0]?.vehicle || props.segments?.[0]?.vehicle
+    if (activeVehicle) {
+      vehicle3DId.value = activeVehicle.id
+    }
+    const initialHeading = props.points.length >= 2 ? dstHeading(props.points[0], props.points[1]) : 0
+    vehicle3DPosition.value = { lat: props.points[0].lat, lng: props.points[0].lng }
+    vehicle3DHeading.value = initialHeading
+    if (vmarker) {
+      vmarker.setLngLat([props.points[0].lng,props.points[0].lat])
+    }
+  }
+}
 
 // ======== 录制 ========
 function toggleRec(){isRecording.value?stopRec():startRec()}
