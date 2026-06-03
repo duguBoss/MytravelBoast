@@ -478,6 +478,79 @@ function createDynamic3DModel(id) {
       wheels.push(wheel)
     })
 
+  } else if (id === 'police' || id === 'ambulance' || id === 'firetruck') {
+      // Emergency Vehicles
+      const isFire = id === 'firetruck'
+      const isPolice = id === 'police'
+      
+      const bodyGeo = new THREE.BoxGeometry(0.55, 0.45, isFire ? 2.0 : 1.6)
+      let color = 0xffffff // ambulance
+      if (isFire) color = 0xe74c3c
+      if (isPolice) color = 0x2c3e50
+      
+      const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.4 })
+      const body = new THREE.Mesh(bodyGeo, bodyMat)
+      body.position.y = 0.35
+      body.castShadow = true
+      group.add(body)
+      
+      // Siren Light
+      const sirenGeo = new THREE.BoxGeometry(0.3, 0.1, 0.1)
+      const sirenMat = new THREE.MeshStandardMaterial({ color: 0x3498db, emissive: 0x3498db, emissiveIntensity: 0.5 })
+      const siren = new THREE.Mesh(sirenGeo, sirenMat)
+      siren.position.set(0, 0.6, 0)
+      group.add(siren)
+      
+      // Wheels
+      const wheelGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.1, 16)
+      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 })
+      const zOffset = isFire ? 0.7 : 0.5
+      const wheelPositions = [
+        [-0.32, 0.18, zOffset], [0.32, 0.18, zOffset],
+        [-0.32, 0.18, -zOffset], [0.32, 0.18, -zOffset]
+      ]
+      wheelPositions.forEach(pos => {
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat)
+        wheel.position.set(...pos)
+        wheel.rotation.z = Math.PI / 2
+        wheel.castShadow = true
+        group.add(wheel)
+        wheels.push(wheel)
+      })
+
+  } else if (id === 'balloon') {
+      // Hot Air Balloon
+      const balloonGeo = new THREE.SphereGeometry(0.8, 16, 16)
+      balloonGeo.scale(1, 1.2, 1)
+      const balloonMat = new THREE.MeshStandardMaterial({ color: 0xe74c3c, metalness: 0.1, roughness: 0.8 })
+      const balloon = new THREE.Mesh(balloonGeo, balloonMat)
+      balloon.position.y = 1.5
+      balloon.castShadow = true
+      group.add(balloon)
+      
+      const basketGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4)
+      const basketMat = new THREE.MeshStandardMaterial({ color: 0xd35400 })
+      const basket = new THREE.Mesh(basketGeo, basketMat)
+      basket.position.y = 0.2
+      basket.castShadow = true
+      group.add(basket)
+
+  } else if (id === 'paraglider') {
+      // Paraglider
+      const wingGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.8, 20, 1, false, 0, Math.PI)
+      wingGeo.rotateZ(Math.PI / 2)
+      wingGeo.scale(1, 0.3, 1)
+      const wingMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f, side: THREE.DoubleSide })
+      const wing = new THREE.Mesh(wingGeo, wingMat)
+      wing.position.y = 1.2
+      wing.castShadow = true
+      group.add(wing)
+      
+      const personGeo = new THREE.BoxGeometry(0.2, 0.4, 0.2)
+      const person = new THREE.Mesh(personGeo, new THREE.MeshStandardMaterial({ color: 0x3498db }))
+      person.position.y = 0.2
+      group.add(person)
+
   } else {
     // DEFAULT ground vehicle (Fallback car)
     // Car body
