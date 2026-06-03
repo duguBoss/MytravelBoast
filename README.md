@@ -33,14 +33,14 @@
 </p>
 
 <p align="center">
-  <video src="travelboast-vue/public/demo.mp4" width="600" style="border-radius: 12px; max-width: 100%;" controls poster="travelboast-vue/public/screenshot.png">
-    您的浏览器不支持 HTML5 video 标签，请直接播放/下载本地 `public/demo.mp4` 视频文件。
+  <video src="travelboast-vue/assets/demo.mp4" width="600" style="border-radius: 12px; max-width: 100%;" controls>
+    您的浏览器不支持 HTML5 video 标签，请直接播放/下载本地 `travelboast-vue/assets/demo.mp4` 视频文件。
   </video>
 </p>
 
 > [!TIP]
 > **效果视频录制说明**：
-> 录像效果可以通过系统自带的“导出视频”功能直接无损捕获并转码生成。您可以将录制生成的 MP4 文件重命名为 `demo.mp4` 并放置在 `travelboast-vue/public/` 目录下，即可在上方的视频播放器中进行直接预览。
+> 录像效果可以通过系统自带的“导出视频”功能直接无损捕获并转码生成。您可以将录制生成的 MP4 文件重命名为 `demo.mp4` 并放置在 `travelboast-vue/assets/` 目录下，即可在上方的视频播放器中进行直接预览。
 
 ---
 
