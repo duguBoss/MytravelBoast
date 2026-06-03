@@ -426,6 +426,7 @@ function initMap() {
           }
         }
       ],
+    },
     projection: { type: 'globe' }, // Native 3D WebGL Globe Projection
     zoom: 1.5,
     center: [80, 30],
