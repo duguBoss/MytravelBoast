@@ -64,8 +64,7 @@ Visit [https://duguboss.github.io/MytravelBoast/](https://duguboss.github.io/Myt
 ## 效果展示 / Demo Video
 
 <div align="center">
-  <video src="./assets/demo.mp4" width="80%" controls autoplay loop muted></video>
-  <p><em>(请将录制好的演示视频放置于 assets/demo.mp4 以展示实际录制效果)</em></p>
+  <video src="./public/assets/demo.mp4" width="80%" controls autoplay loop muted></video>
 </div>
 
 ---
